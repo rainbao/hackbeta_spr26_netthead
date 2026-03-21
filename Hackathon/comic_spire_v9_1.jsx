@@ -6,7 +6,9 @@ import { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "r
    keyword tooltips, thorough debug
    ═══════════════════════════════════════════════════════ */
 
-const CSV_RAW=`Name,Power,Strength,Magic,Intelligence,Speed,Defense,Poison,Rage,Corrupted,Evilness,Personality,Favorite_Color,Weakness,isVillain
+// CSV data loaded dynamically from file (see useEffect below)
+// Fallback embedded CSV for environments where fetch fails
+const FALLBACK_CSV=`Name,Power,Strength,Magic,Intelligence,Speed,Defense,Poison,Rage,Corrupted,Evilness,Personality,Favorite_Color,Weakness,isVillain
 Green X,30,37,76,74,92,89,7,31,24,48,Sarcastic,0x09251b,Fearful,False
 Wonder Hulk,92,43,66,78,51,82,0,13,45,0,Sadistic,0x52deff,Soft hearted,False
 Dark Daredevil,64,0,40,100,80,11,50,28,42,100,Power hungry,0xa130bb,Prideful,True
@@ -443,7 +445,44 @@ function bReduce(state,action){
 
 // ═══ MAIN ═══
 export default function ComicSpire(){
-  const heroes=useMemo(()=>parseCSV(CSV_RAW),[]);
+  const[heroes,setHeroes]=useState([]);
+  const[csvLoading,setCsvLoading]=useState(true);
+  
+  // Load CSV from file on mount
+  useEffect(()=>{
+    const loadCSV=async()=>{
+      try{
+        // Try to fetch from public folder (Vite, local development)
+        const res=await fetch('/heroes.csv');
+        if(res.ok){
+          const csv=await res.text();
+          setHeroes(parseCSV(csv));
+          setCsvLoading(false);
+          return;
+        }
+      }catch(e){}
+      
+      // Try alternate paths
+      const paths=['/HackBeta - Superhero CSV.csv','./heroes.csv','../heroes.csv'];
+      for(const path of paths){
+        try{
+          const res=await fetch(path);
+          if(res.ok){
+            const csv=await res.text();
+            setHeroes(parseCSV(csv));
+            setCsvLoading(false);
+            return;
+          }
+        }catch(e){}
+      }
+      
+      // Fallback to embedded CSV if file fetch fails
+      setHeroes(parseCSV(FALLBACK_CSV));
+      setCsvLoading(false);
+    };
+    loadCSV();
+  },[]);
+  
   const[screen,setScreen]=useState('title');
   const[player,setPlayer]=useState(null);
   const[deck,setDeck]=useState([]);
