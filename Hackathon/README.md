@@ -18,11 +18,20 @@ This is a single React component. You have two options to run it:
 npm create vite@latest comic-spire -- --template react
 cd comic-spire
 npm install
-# Replace src/App.jsx content with the contents of comic_spire_v9_1.jsx
-# Change the last line from:  export default function ComicSpire(){
-# to make App.jsx import and re-export it, or rename the function to App
+
+# Copy the game files
+cp ../comic_spire_v9_1.jsx src/App.jsx
+cp -r ../public . 
+
 npm run dev
 ```
+
+**What to do:**
+1. Replace `src/App.jsx` with contents of `comic_spire_v9_1.jsx` (or copy the file directly)
+2. Copy the `public/` folder from this directory — it contains `heroes.csv` that the game loads at runtime
+3. Run `npm run dev` and open browser to `http://localhost:5173`
+
+The app will automatically fetch `heroes.csv` from the public folder on startup.
 
 ### Option C — CodeSandbox / StackBlitz
 Create a new React sandbox and paste the file contents into `App.jsx`.
@@ -33,14 +42,16 @@ Create a new React sandbox and paste the file contents into `App.jsx`.
 
 ```
 Hackathon/
-├── comic_spire_v9_1.jsx     # Entire game — single React component
-├── HackBeta - Superhero CSV.csv  # Source data (embedded inside JSX as CSV_RAW)
+├── comic_spire_v9_1.jsx          # Entire game — single React component
+├── public/
+│   └── heroes.csv                # Character data (loaded at runtime)
+├── HackBeta - Superhero CSV.csv  # Source data file (reference)
 ├── HackBeta Challenge - Game.pdf # Challenge brief
-├── README.md                # This file
-└── DESIGN.md                # Full game design reference
+├── README.md                      # This file
+└── DESIGN.md                      # Full game design reference
 ```
 
-> The CSV data is embedded directly in the JSX file as the `CSV_RAW` constant. The `.csv` file is the source of truth for hero stats.
+> The CSV data is now **loaded dynamically at runtime** from `public/heroes.csv`. The component first tries to fetch the file, and falls back to an embedded list if fetch fails (for environments like Claude Artifact or CodeSandbox).
 
 ---
 
@@ -61,19 +72,20 @@ Hackathon/
 | Lines | Section |
 |-------|---------|
 | 1–8 | Imports and version comment |
-| 9–57 | `CSV_RAW` — embedded hero/villain data |
-| 59–63 | Utility functions (`parseCSV`, `clamp`, `shuffle`, `pick`, etc.) |
-| 68–81 | `KW_INFO` — keyword definitions and tooltip text |
-| 84–90 | `SHAPES` — panel shape definitions |
-| 93–147 | `getSignature()` — generates a signature card from hero stats |
-| 149–154 | `makeStarterDeck()` — Punch × 4, Guard × 4, Spark × 1, Adapt × 1 |
-| 156–176 | `makeEnemy()`, `rollIntent()`, `pickEnemy()` — enemy factory |
-| 178–196 | `makeMap()` — 15-floor procedural map |
-| 198–225 | `EVENTS`, `ALL_RELICS` — event pool and relic definitions |
-| 235–246 | Grid helpers: `canPlace`, `doPlace`, `getValid` |
-| 249–317 | `resolveCard()` — card effect resolution logic |
-| 320–437 | `bReduce()` — battle state reducer (INIT, PLACE_CARD, END_TURN) |
-| 440–836 | `ComicSpire()` — main component, all screens |
+| 9–70 | `FALLBACK_CSV` — small embedded backup CSV (for environments without file access) |
+| 72–110 | CSV loading `useEffect` — fetches `public/heroes.csv` at runtime |
+| 111–115 | Utility functions (`parseCSV`, `clamp`, `shuffle`, `pick`, etc.) |
+| 120–133 | `KW_INFO` — keyword definitions and tooltip text |
+| 136–142 | `SHAPES` — panel shape definitions |
+| 145–199 | `getSignature()` — generates a signature card from hero stats |
+| 201–206 | `makeStarterDeck()` — Punch × 4, Guard × 4, Spark × 1, Adapt × 1 |
+| 208–228 | `makeEnemy()`, `rollIntent()`, `pickEnemy()` — enemy factory |
+| 230–248 | `makeMap()` — 15-floor procedural map |
+| 250–277 | `EVENTS`, `ALL_RELICS` — event pool and relic definitions |
+| 287–298 | Grid helpers: `canPlace`, `doPlace`, `getValid` |
+| 301–369 | `resolveCard()` — card effect resolution logic |
+| 372–489 | `bReduce()` — battle state reducer (INIT, PLACE_CARD, END_TURN) |
+| 492–... | `ComicSpire()` — main component, all screens (uses heroes from CSV state) |
 
 ---
 
