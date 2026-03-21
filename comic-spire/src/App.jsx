@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "r
    ═══════════════════════════════════════════════════════ */
 
 // CSV data loaded dynamically from file (see useEffect below)
+const FALLBACK_CSV=`Name,Power,Strength,Magic,Intelligence,Speed,Defense,Poison,Rage,Favorite_Color,isVillain
+Fallback Hero,40,40,40,40,40,40,20,30,0x666666,False`;
 
 
 function parseCSV(raw){const ls=raw.trim().split('\n'),hd=ls[0].split(',').map(h=>h.trim());return ls.slice(1).map(l=>{const v=l.split(',').map(s=>s.trim()),o={};hd.forEach((h,i)=>o[h]=v[i]||'');return o;})}
@@ -15,7 +17,43 @@ const uid=()=>Math.random().toString(36).slice(2,10),pick=a=>a[Math.floor(Math.r
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v)),shuffle=a=>[...a].sort(()=>Math.random()-0.5);
 const SK=['Power','Strength','Magic','Intelligence','Speed','Defense','Poison','Rage'];
 
-const ROWS=2,COLS=3;
+const ROWS=2,COLS=2;
+const TOTAL_PANELS=ROWS*COLS;
+const PLAYER_PANEL_ASSETS=[
+  '/assets/Bubble_Comic_Slate_1.png',
+  '/assets/Bubble_Comic_Slate_2.png',
+  '/assets/Bubble_Comic_Slate_3.png',
+  '/assets/Bubble_Comic_Slate_4.png',
+];
+const ENEMY_PANEL_ASSETS=[
+  '/assets/Brutal_Comic_Slate_1.png',
+  '/assets/Brutal_Comic_Slate_2.png',
+  '/assets/Brutal_Comic_Slate_3.png',
+  '/assets/Brutal_Comic_Slate_4.png',
+];
+
+function panelSpanForCard(card){
+  const energyCost=(card.keyword==='blood'||card.keyword==='frenzy')?1:Math.max(1,card.cost||1);
+  if(energyCost>=4)return 4;
+  if(energyCost>=2)return 2;
+  return 1;
+}
+
+function panelIdx(r,c){
+  return r*COLS+c;
+}
+
+function idxToPos(i){
+  return { r:Math.floor(i/COLS), c:i%COLS };
+}
+
+function getIntentVisibility(speed){
+  return clamp(1+Math.floor((speed||0)/30),1,4);
+}
+
+function makeEnemyPlan(en){
+  return Array.from({length:TOTAL_PANELS},()=>rollIntent(en));
+}
 
 // ═══ KEYWORD DEFINITIONS (shown on hover) ═══
 const KW_INFO={
@@ -114,7 +152,7 @@ function makeEnemy(hero,floor,isBoss,isElite){
   return{...hero,gameHp:hp,gameMaxHp:hp,block:0,poisonStacks:0,corrodeStacks:0,weakened:0,
     atk:Math.floor(3+(stats.Strength*0.07+stats.Power*0.05)*m+floor*0.4),
     mag:Math.floor(2+(stats.Magic*0.06+stats.Intelligence*0.04)*m+floor*0.3),
-    def:Math.floor(stats.Defense*0.12*m+2),color:clr(hero.Favorite_Color),isBoss,isElite,threat,
+    def:Math.floor(stats.Defense*0.12*m+2),speed:stats.Speed,color:clr(hero.Favorite_Color),isBoss,isElite,threat,
     intent:null,intentVal:0,signature:getSignature(hero)};
 }
 function rollIntent(en){const r=Math.random(),ac=0.45+$(en.Rage)/300;
@@ -187,18 +225,29 @@ const TC={attack:'#ff4455',magic:'#bb55ff',defend:'#4499ff',poison:'#44dd66',rag
 const NI={start:'★',battle:'⚔',elite:'💀',boss:'👑',shop:'🛒',event:'?',rest:'🏕'};
 const NC={start:'#ffcc33',battle:'#ff5555',elite:'#ff3366',boss:'#ffd700',shop:'#55ddbb',event:'#bb88ff',rest:'#66bb66'};
 
-// Panel placement with shapes
-function canPlace(grid,r,c,shape){
-  const cells=SHAPES[shape]||SHAPES.s1;
-  return cells.every(([dr,dc])=>r+dr>=0&&r+dr<ROWS&&c+dc>=0&&c+dc<COLS&&grid[r+dr][c+dc]===null);
+// 4-panel placement by energy cost on a 2x2 board in panel order 1->4
+function canPlace(grid,r,c,card){
+  const span=panelSpanForCard(card);
+  const start=panelIdx(r,c);
+  if(start+span>TOTAL_PANELS)return false;
+  for(let i=0;i<span;i++){
+    const {r:rr,c:cc}=idxToPos(start+i);
+    if(grid[rr][cc]!==null)return false;
+  }
+  return true;
 }
-function doPlace(grid,r,c,shape,id){
+function doPlace(grid,r,c,card,id){
   const ng=grid.map(row=>[...row]);
-  (SHAPES[shape]||SHAPES.s1).forEach(([dr,dc])=>{ng[r+dr][c+dc]=id;});
+  const span=panelSpanForCard(card);
+  const start=panelIdx(r,c);
+  for(let i=0;i<span;i++){
+    const {r:rr,c:cc}=idxToPos(start+i);
+    ng[rr][cc]=id;
+  }
   return ng;
 }
-function getValid(grid,shape){
-  const s=new Set();for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(canPlace(grid,r,c,shape))s.add(`${r}-${c}`);return s;
+function getValid(grid,card){
+  const s=new Set();for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(canPlace(grid,r,c,card))s.add(`${r}-${c}`);return s;
 }
 
 // ═══ RESOLVE CARD (called during END_TURN in reading order) ═══
@@ -276,6 +325,8 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
 // ═══ BATTLE REDUCER ═══
 const INIT_B={hand:[],drawPile:[],discardPile:[],energy:3,maxEnergy:3,playerBlock:0,
   enemy:null,page:Array(ROWS).fill(null).map(()=>Array(COLS).fill(null)),
+  enemyPlan:[],
+  queuedPages:[],
   placedCards:[],pendingCharges:[],activeCharges:[],// activeCharges = from last turn, visually on page
   turn:1,phase:'player',log:[],victory:false,defeat:false,
   comboCount:0,channelStacks:0,momentum:0,momentumUsed:false,extraDraw:0};
@@ -286,9 +337,10 @@ function bReduce(state,action){
     case 'INIT':{
       const{enemy,deck,maxEn,relics}=action;const sh=shuffle(deck),hs=Math.min(5,sh.length);
       const en={...enemy};if(relics?.some(r=>r.fx==='startPois'))en.poisonStacks=2;
+      const enemyPlan=makeEnemyPlan(en);
       // Carry over activeCharges from previous state if any? No — new battle.
       return{...INIT_B,enemy:en,hand:sh.slice(0,hs),drawPile:sh.slice(hs),maxEnergy:maxEn,energy:maxEn,
-        log:[`⚔ ${enemy.Name}!`,`🔓 Win → ${enemy.signature.name} [${enemy.signature.archetype}]`]};}
+        enemyPlan,log:[`⚔ ${enemy.Name}!`,`🔓 Win → ${enemy.signature.name} [${enemy.signature.archetype}]`]};}
 
     case 'PLACE_CARD':{
       const{card,row,col,relics}=action;
@@ -299,8 +351,8 @@ function bReduce(state,action){
         if(s.momentum>=momT&&!s.momentumUsed){ec=0;s.momentumUsed=true;s.log=[...s.log,'⚡ MOMENTUM! Free!'];}
         if(s.energy<ec)return s;s.energy-=ec;}
       // Place on grid using shape
-      if(!canPlace(s.page,row,col,card.shape||'s1'))return s;
-      s.page=doPlace(s.page,row,col,card.shape||'s1',card.id);
+      if(!canPlace(s.page,row,col,card))return s;
+      s.page=doPlace(s.page,row,col,card,card.id);
       if(card.charge){
         s.pendingCharges=[...s.pendingCharges,{...card,row,col}];
         s.log=[...s.log,`⏳ ${card.name} CHARGING — fires next turn!`];
@@ -308,6 +360,17 @@ function bReduce(state,action){
         s.placedCards=[...s.placedCards,{...card,row,col}];
       }
       s.hand=s.hand.filter(c=>c.id!==card.id);
+
+      // Auto-save a full 2x2 page so the player can continue placing more cards.
+      const isPageFull=s.page.every(rowCells=>rowCells.every(cell=>cell!==null));
+      if(isPageFull){
+        const pageCardCount=s.placedCards.length;
+        s.queuedPages=[...s.queuedPages,{cards:[...s.placedCards],cardCount:pageCardCount}];
+        s.page=Array(ROWS).fill(null).map(()=>Array(COLS).fill(null));
+        s.placedCards=[];
+        s.log=[...s.log,`📚 Page ${s.queuedPages.length} saved (${pageCardCount} card${pageCardCount===1?'':'s'})`];
+      }
+
       // Only energy-costing cards count toward momentum (blood/frenzy have their own cost)
       if(card.keyword!=='blood'&&card.keyword!=='frenzy')s.momentum++;
       return s;}
@@ -329,13 +392,19 @@ function bReduce(state,action){
         sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev);if(msg)s.log=[...s.log,msg];prev=card;});
       }
 
-      // 2. Resolve THIS turn's placed cards in reading order
-      if(s.placedCards.length>0){
-        s.log=[...s.log,'📖 Reading page...'];
-        const sorted=[...s.placedCards].sort((a,b)=>(a.row*COLS+a.col)-(b.row*COLS+b.col));
+      // 2. Resolve THIS turn's saved pages + current page in order
+      const pagesToResolve=[...s.queuedPages];
+      if(s.placedCards.length>0)pagesToResolve.push({cards:[...s.placedCards],cardCount:s.placedCards.length});
+      if(pagesToResolve.length>0){
+        s.log=[...s.log,'📖 Reading saved pages...'];
         s.comboCount=0;
         let prev=s.activeCharges.length>0?s.activeCharges[s.activeCharges.length-1]:null;
-        sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev);if(msg)s.log=[...s.log,msg];prev=card;});
+        pagesToResolve.forEach((pg,pi)=>{
+          if(en.gameHp<=0||!pg.cards?.length)return;
+          s.log=[...s.log,`📄 Page ${pi+1} (${pg.cardCount||pg.cards.length} cards)`];
+          const sorted=[...pg.cards].sort((a,b)=>(a.row*COLS+a.col)-(b.row*COLS+b.col));
+          sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev);if(msg)s.log=[...s.log,msg];prev=card;});
+        });
       }
 
       // 3. Channel burst
@@ -353,28 +422,35 @@ function bReduce(state,action){
 
       if(en.gameHp<=0){s.enemy=en;s.victory=true;s.phase='done';return s;}
 
-      // 4. Enemy acts — pHp accounts for all healing this turn
+      // 4. Enemy acts — sequentially through its 4-panel intent queue
       let pHp=Math.min(playerMaxHp,playerHp+totalHeal);let pBlk=s.playerBlock;
-      switch(en.intent){
-        case 'attack':{let d=Math.max(1,en.intentVal-(en.weakened||0));const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;pHp=Math.max(0,pHp-d);
-          s.log=[...s.log,`🔴 ${en.Name}: ${d} dmg${bl>0?' ('+bl+' blk)':''}`];break;}
-        case 'magic':{let d=en.intentVal;const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(pBlk,b2);pBlk-=bl;d=p2+b2-bl;pHp=Math.max(0,pHp-d);
-          s.log=[...s.log,`🟣 ${en.Name}: ${d} magic${bl>0?` (${bl} blk, ${p2} pierced)`:''}` ];break;}
-        case 'defend':en.block+=en.intentVal;s.log=[...s.log,`🔵 ${en.Name}: +${en.intentVal} Blk`];break;
-        case 'buff':en.atk+=en.intentVal;s.log=[...s.log,`🟡 ${en.Name}: ATK +${en.intentVal}`];break;}
+      s.enemyPlan.forEach((intentCard,idx)=>{
+        if(pHp<=0||en.gameHp<=0)return;
+        switch(intentCard.intent){
+          case 'attack':{let d=Math.max(1,intentCard.intentVal-(en.weakened||0));const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`🔴 [${idx+1}] ${en.Name}: ${d} dmg${bl>0?' ('+bl+' blk)':''}`];break;}
+          case 'magic':{let d=intentCard.intentVal;const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(pBlk,b2);pBlk-=bl;d=p2+b2-bl;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`🟣 [${idx+1}] ${en.Name}: ${d} magic${bl>0?` (${bl} blk, ${p2} pierced)`:''}` ];break;}
+          case 'defend':en.block+=intentCard.intentVal;s.log=[...s.log,`🔵 [${idx+1}] ${en.Name}: +${intentCard.intentVal} Blk`];break;
+          case 'buff':en.atk+=intentCard.intentVal;s.log=[...s.log,`🟡 [${idx+1}] ${en.Name}: ATK +${intentCard.intentVal}`];break;
+          default:break;
+        }
+      });
 
       // Sync remaining block after enemy consumed some (needed for accurate Fortify carry)
       s.playerBlock=pBlk;
       action.setPlayerHp(pHp);
       if(pHp<=0){s.enemy=en;s.defeat=true;s.phase='done';return s;}
-      Object.assign(en,rollIntent(en));s.enemy=en;
+      s.enemy=en;
+      s.enemyPlan=makeEnemyPlan(en);
 
       // Fortify carry — uses remaining block after enemy attacks
-      const hasFort=[...s.placedCards,...s.activeCharges].some(c=>c.keyword==='fortify');
+      const allPlacedCards=s.queuedPages.flatMap(p=>p.cards||[]).concat(s.placedCards);
+      const hasFort=[...allPlacedCards,...s.activeCharges].some(c=>c.keyword==='fortify');
       const carry=hasFort?Math.floor(s.playerBlock*(hasR('fortUp')?0.65:0.5)):0;
 
       // Discard: resolved cards (placed + old activeCharges) + unplayed hand
-      const disc=[...s.discardPile,...s.hand,...s.placedCards,...s.activeCharges];
+      const disc=[...s.discardPile,...s.hand,...allPlacedCards,...s.activeCharges];
       let draw=[...s.drawPile];
       const baseHand=5+(hasR('handSize')?1:0)+(hasR('drawUp')?1:0);
       const neededHand=baseHand+(s.extraDraw||0);
@@ -387,12 +463,18 @@ function bReduce(state,action){
       // Place activeCharges (from pendingCharges) onto the new page
       const newActive=[...s.pendingCharges];
       newActive.forEach(card=>{
-        (SHAPES[card.shape]||SHAPES.s1).forEach(([dr,dc])=>{
-          if(card.row+dr<ROWS&&card.col+dc<COLS)newPage[card.row+dr][card.col+dc]=card.id;
-        });
+        const span=panelSpanForCard(card);
+        const start=panelIdx(card.row,card.col);
+        for(let i=0;i<span;i++){
+          if(start+i<TOTAL_PANELS){
+            const {r:rr,c:cc}=idxToPos(start+i);
+            newPage[rr][cc]=card.id;
+          }
+        }
       });
 
       s.page=newPage;s.activeCharges=newActive;s.pendingCharges=[];
+      s.queuedPages=[];
       s.placedCards=[];s.energy=s.maxEnergy;s.playerBlock=carry;
       s.comboCount=0;s.momentum=0;s.momentumUsed=false;s.turn++;s.phase='player';
       if(carry>0)s.log=[...s.log,`🛡️ Fortify: ${carry}`];
@@ -468,6 +550,7 @@ export default function ComicSpire(){
   const[tooltip,setTooltip]=useState(null);
   const[battle,dispatch]=useReducer(bReduce,INIT_B);
   const[floaters,setFloaters]=useState([]);
+  const[slatePreview,setSlatePreview]=useState([]);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
   const logRef=useRef(null);
@@ -492,7 +575,7 @@ export default function ComicSpire(){
   useEffect(()=>{if(battle.defeat&&screen==='battle')setTimeout(()=>setScreen('gameOver'),600);},[battle.defeat]);
 
   const startGame=useCallback(()=>{
-    setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10});
+    setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,speed:55});
     setDeck(makeStarterDeck());setGold(25);setAlignment('neutral');setMaxEnergy(3);
     setPotLv(1);setCopiedAbilities([]);setRelics([]);
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
@@ -512,6 +595,17 @@ export default function ComicSpire(){
 
   const endTurn=useCallback(()=>{
     if(battle.phase!=='player')return;setAnimPhase('r');
+    const finalPages=[...battle.queuedPages];
+    if(battle.placedCards.length>0)finalPages.push({cards:battle.placedCards});
+    if(finalPages.length>0){
+      const preview=finalPages.map((pg,idx)=>({
+        id:idx,
+        cards:pg.cards?.length||0,
+        slateIndex:clamp(pg.cards?.length||1,1,4),
+      }));
+      setSlatePreview(preview);
+      setTimeout(()=>setSlatePreview([]),1200);
+    }
     setTimeout(()=>{
       dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,
         getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
@@ -559,8 +653,8 @@ export default function ComicSpire(){
 
   const HpBar=({hp,max,color,h=13})=> <div style={{position:'relative',height:h,background:'#1a1a2a',borderRadius:h/2,overflow:'hidden',border:'1px solid #333',minWidth:80}}><div style={{height:'100%',width:`${clamp(hp/max*100,0,100)}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:h/2,transition:'width 0.4s'}}/><div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:h*0.6,fontFamily:FB,fontWeight:700,color:'#fff',textShadow:'0 1px 2px #000'}}>{hp}/{max}</div></div>;
 
-  const IntentBox=({intent,val,weak})=>{const cfg={attack:{i:'⚔️',c:'#ff4455',t:`${Math.max(1,val-(weak||0))} dmg`},magic:{i:'✨',c:'#bb55ff',t:`${val} magic`},defend:{i:'🛡️',c:'#4499ff',t:`+${val} Blk`},buff:{i:'💪',c:'#ffcc33',t:`+${val} ATK`}}[intent]||{i:'?',c:'#888',t:''};
-    return <div style={{display:'flex',alignItems:'center',gap:4,padding:'3px 6px',background:`${cfg.c}10`,border:`1px solid ${cfg.c}33`,borderRadius:5,marginTop:2,fontSize:9}}><span>{cfg.i}</span><span style={{color:'#bbb',fontFamily:FB}}>{cfg.t}</span></div>;};
+  const IntentBox=({intent,val,weak,compact=false})=>{const cfg={attack:{i:'⚔️',c:'#ff4455',t:`${Math.max(1,val-(weak||0))} dmg`},magic:{i:'✨',c:'#bb55ff',t:`${val} magic`},defend:{i:'🛡️',c:'#4499ff',t:`+${val} Blk`},buff:{i:'💪',c:'#ffcc33',t:`+${val} ATK`}}[intent]||{i:'?',c:'#888',t:''};
+    return <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4,padding:compact?'2px':'3px 6px',background:`${cfg.c}10`,border:`1px solid ${cfg.c}33`,borderRadius:5,marginTop:compact?0:2,fontSize:compact?8:9,lineHeight:1}}><span>{cfg.i}</span><span style={{color:'#bbb',fontFamily:FB}}>{cfg.t}</span></div>;};
 
   const Card=({card,onClick,sel,price,dis})=>{const kInfo=KW_INFO[card.keyword];const tc=kInfo?.color||TC[card.type]||'#888';
     return <div onClick={()=>!dis&&onClick?.(card)} style={{width:118,minWidth:118,height:165,borderRadius:8,overflow:'hidden',cursor:dis?'default':'pointer',background:bg2,border:`2px solid ${sel?'#fff':tc}`,boxShadow:sel?`0 0 18px ${tc}66`:`0 3px 8px #00000088`,transform:sel?'translateY(-10px) scale(1.05)':'scale(1)',transition:'all 0.2s',flexShrink:0,opacity:dis?0.3:1}}>
@@ -682,11 +776,15 @@ export default function ComicSpire(){
   // ═══ BATTLE ═══
   if(screen==='battle'){
     const selCard=battle.hand.find(c=>c.id===selectedCardId);
-    const validSet=selCard?getValid(battle.page,selCard.shape||'s1'):new Set();
+    const validSet=selCard?getValid(battle.page,selCard):new Set();
     const en=battle.enemy;const isP=battle.phase==='player'&&!animPhase;
+    const visibleEnemyPanels=getIntentVisibility(player?.speed||0);
+    const queuedCardCount=battle.queuedPages.reduce((sum,p)=>sum+(p.cardCount||p.cards?.length||0),0);
+    const totalPlacedCount=queuedCardCount+battle.placedCards.length;
+    const totalPageCount=battle.queuedPages.length+(battle.placedCards.length>0?1:0);
     const momT=hasR('momDown')?3:4;
     const canPlay=c=>{if(!isP)return false;if(c.keyword==='blood')return(player?.hp||0)>(hasR('bloodCheap')?3:c.bloodCost);
-      if(c.keyword==='frenzy')return getValid(battle.page,c.shape||'h2').size>0;
+      if(c.keyword==='frenzy')return getValid(battle.page,c).size>0;
       if(battle.momentum>=momT&&!battle.momentumUsed)return true;return battle.energy>=c.cost;};
 
     // Find all cards currently on the page (placed + pendingCharges + activeCharges)
@@ -695,6 +793,13 @@ export default function ComicSpire(){
     return (
       <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined}}>
         <style>{CSS}</style><TooltipOverlay/>
+        {slatePreview.length>0&&<div style={{position:'fixed',inset:0,background:'#000a',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',gap:8,flexWrap:'wrap',padding:16,pointerEvents:'none'}}>
+          {slatePreview.map(p=><div key={p.id} style={{background:'#111',border:'2px solid #fff3',borderRadius:8,padding:6,textAlign:'center',minWidth:110}}>
+            <div style={{fontFamily:FD,fontSize:9,color:'#ffd700',marginBottom:3}}>PAGE {p.id+1}</div>
+            <img src={`/assets/Bubble_Comic_Slate_${p.slateIndex}.png`} alt={`Page ${p.id+1} slate`} style={{width:92,height:92,objectFit:'cover',borderRadius:4,border:'1px solid #444'}}/>
+            <div style={{fontFamily:FB,fontSize:9,color:'#bbb',marginTop:3}}>{p.cards} card{p.cards===1?'':'s'}</div>
+          </div>)}
+        </div>}
         {floaters.map(f=> <div key={f.id} style={{position:'fixed',left:`${f.x}%`,top:`${f.y}%`,pointerEvents:'none',zIndex:100,fontFamily:FD,fontSize:18,color:f.color,textShadow:'2px 2px 0 #000',animation:'floatDmg 1.4s ease-out forwards'}}>{f.text}</div>)}
         {/* Combatants */}
         <div style={{display:'flex',justifyContent:'space-between',gap:8,marginBottom:5,flexWrap:'wrap'}}>
@@ -719,19 +824,19 @@ export default function ComicSpire(){
               {en.poisonStacks>0&&<span style={{color:'#44dd66'}}>☠{en.poisonStacks}{en.corrodeStacks>0?'⊛':''}</span>}
               {(en.weakened||0)>0&&<span style={{color:'#bb55ff'}}>💫-{en.weakened}</span>}
             </div>
-            <IntentBox intent={en.intent} val={en.intentVal} weak={en.weakened}/>
           </div>}
         </div>
 
-        {/* COMIC PAGE 2×3 */}
-        <div style={{background:'#f5f0e8',borderRadius:8,padding:6,maxWidth:380,margin:'0 auto 4px',width:'100%',border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
+        {/* PLAYER + ENEMY PANELS (2x2 each) */}
+        <div style={{display:'flex',gap:8,justifyContent:'center',alignItems:'stretch',flexWrap:'wrap',marginBottom:4}}>
+        <div style={{background:'#f5f0e8',borderRadius:8,padding:6,width:280,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
           <div style={{position:'absolute',inset:0,borderRadius:4,opacity:0.03,backgroundImage:'radial-gradient(circle,#000 0.5px,transparent 0.5px)',backgroundSize:'6px 6px',pointerEvents:'none'}}/>
           <div style={{fontFamily:FD,fontSize:7,color:'#888',textAlign:'center',marginBottom:3,letterSpacing:2}}>
-            {battle.placedCards.length>0?`${battle.placedCards.length} cards queued — END TURN to resolve ↘`:
+            {totalPlacedCount>0?`${totalPlacedCount} cards across ${totalPageCount} page${totalPageCount===1?'':'s'} — END TURN to resolve ↘`:
               battle.activeCharges.length>0?`⏳ ${battle.activeCharges.length} charge(s) ready — will fire on END TURN`:
-              '★ PLACE CARDS → resolve in reading order ★'}
+              '★ PLAYER 2x2 PANELS ★'}
           </div>
-          <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},70px)`,gap:3}}>
+          <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},64px)`,gap:4}}>
             {battle.page.map((row,ri)=>row.map((cell,ci)=>{
               const key=`${ri}-${ci}`;const isV=validSet.has(key);
               const pl=cell?allPageCards.find(c=>c.id===cell):null;
@@ -740,8 +845,13 @@ export default function ComicSpire(){
               const kInfo=pl?KW_INFO[pl.keyword]:null;
               const tc=kInfo?.color||TC[pl?.type]||'#ccc';
               const order=ri*COLS+ci+1;
+              const panelBg=PLAYER_PANEL_ASSETS[order-1]||'';
               return <div key={key} onClick={()=>isV&&selCard?placeCard(selCard,ri,ci):null} style={{
-                background:pl?(isCharging?`linear-gradient(135deg,#ffaa3315,#fff8ee)`:`linear-gradient(135deg,${pl.color}15,#fff)`):isV?'#fffbe6':'#faf8f2',
+                backgroundImage:panelBg?`url(${panelBg})`:undefined,
+                backgroundSize:'cover',
+                backgroundPosition:'center',
+                backgroundColor:pl?(isCharging?'#fff8ee':'#ffffff'):(isV?'#fffbe6':'#faf8f2'),
+                backgroundBlendMode:'multiply',
                 border:`2px solid ${pl?(isCharging?'#ffaa33':tc):isV?'#ddaa33':'#e0ddd6'}`,borderRadius:4,
                 display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
                 cursor:isV?'pointer':'default',transition:'all 0.15s',position:'relative',
@@ -756,13 +866,42 @@ export default function ComicSpire(){
           </div>
         </div>
 
+        <div style={{background:'#101017',borderRadius:8,padding:6,width:280,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
+          <div style={{fontFamily:FD,fontSize:7,color:'#888',textAlign:'center',marginBottom:3,letterSpacing:2}}>
+            ENEMY 2x2 INTENT · visible {visibleEnemyPanels}/4
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},64px)`,gap:4}}>
+            {battle.enemyPlan.map((intentCard,idx)=>{
+              const reveal=idx<visibleEnemyPanels;
+              const panelBg=ENEMY_PANEL_ASSETS[idx]||'';
+              return <div key={`intent-${idx}`} style={{
+                border:`2px solid ${reveal?'#555':'#2a2a2a'}`,
+                borderRadius:4,
+                position:'relative',
+                display:'flex',
+                alignItems:'center',
+                justifyContent:'center',
+                backgroundImage:panelBg?`url(${panelBg})`:undefined,
+                backgroundSize:'cover',
+                backgroundPosition:'center',
+                backgroundColor:reveal?'#111':'#090909',
+                backgroundBlendMode:'multiply',
+              }}>
+                <div style={{position:'absolute',top:1,left:3,fontSize:7,color:'#aaa',fontFamily:FD}}>{idx+1}</div>
+                {reveal?<IntentBox intent={intentCard.intent} val={intentCard.intentVal} weak={en.weakened} compact/>:<div style={{fontSize:11,color:'#666',fontFamily:FD}}>??</div>}
+              </div>;
+            })}
+          </div>
+        </div>
+        </div>
+
         <div ref={logRef} style={{maxWidth:380,width:'100%',margin:'0 auto 3px',padding:'2px 6px',background:'#00000044',borderRadius:4,fontSize:7,color:'#555',maxHeight:32,overflowY:'auto',lineHeight:1.4}}>
           {battle.log.slice(-4).map((m,i)=> <div key={i}>{m}</div>)}
         </div>
 
         <div style={{marginBottom:4}}>
           <div style={{fontFamily:FD,fontSize:7,color:'#444',textAlign:'center',marginBottom:2,letterSpacing:1}}>
-            {!isP?'⏳ Resolving...':selCard?`Shape: ${selCard.shape||'s1'} ${selCard.charge?'(⏳ fires NEXT turn)':''}— click golden panel`:'SELECT A SUPERPOWER'}
+            {!isP?'⏳ Resolving...':selCard?`Panel use: ${panelSpanForCard(selCard)} ${selCard.charge?'(⏳ fires NEXT turn)':''} — click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
             {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.2s ${i*0.04}s ease both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)}/></div>)}
