@@ -898,7 +898,7 @@ export default function ComicSpire(){
       // Build slate preview: one entry per actual card placed (up to 4)
       const allCards=finalPages.flatMap(pg=>pg.cards||[]);
       const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
-      const slateVariant=evilness>=60?'Brutal':'Bubble';
+      const slateVariant=pick(['Bubble','Brutal','Action']);
       setSlatePreview({cards:cardData,variant:slateVariant});
       setTimeout(()=>setSlatePreview(null),1500);
     }
