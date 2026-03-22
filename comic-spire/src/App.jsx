@@ -21,6 +21,7 @@ const SK=['Power','Strength','Magic','Intelligence','Speed','Defense','Poison','
 
 const ROWS=2,COLS=2;
 const TOTAL_PANELS=ROWS*COLS;
+const DEFAULT_UI_ZOOM='120%';
 
 function panelSpanForCard(card){
   // Use the card's shape definition as the source of truth for panel span
@@ -177,7 +178,7 @@ function getSignature(hero){
 function makeStarterDeck(){
   const mk=(nm,d,t,ic,v,kw='',cost=1)=>({id:uid(),name:nm,desc:d,type:t,icon:ic,value:v,cost,shape:'s1',panelSize:1,hits:1,debuff:0,keyword:kw,bloodCost:0,charge:false,heroName:'Potential Man',color:'#888',tier:0,copiedFrom:null,threat:0,bestStat:null,archetype:''});
   return[
-    mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),
+    mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),
     mk('Potential Guard','Gain 4 Block','defend','🤲',4),mk('Potential Guard','Gain 4 Block','defend','🤲',4),mk('Potential Guard','Gain 4 Block','defend','🤲',4),mk('Potential Guard','Gain 4 Block','defend','🤲',4),mk('Potential Guard','Gain 4 Block','defend','🤲',4),
     mk('Potential Spark','Deal 3 magic (30% pierces block)','magic','✨',3),mk('Potential Spark','Deal 3 magic (30% pierces block)','magic','✨',3),
     mk('Adaptation','Heal 4','heal','⚕️',4),mk('Adaptation','Heal 4','heal','⚕️',4),
@@ -873,6 +874,14 @@ export default function ComicSpire(){
     }
     return seen;
   },[hexMap,hoverNodeId]);
+  useEffect(()=>{
+    const root=document.documentElement;
+    const prevZoom=root.style.zoom;
+    root.style.zoom=DEFAULT_UI_ZOOM;
+    return()=>{
+      root.style.zoom=prevZoom;
+    };
+  },[]);
   // Clear tooltip and floaters on any screen change
   useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
   // Cutscene: scroll to bottom whenever map or opening cinematic opens
@@ -881,21 +890,15 @@ export default function ComicSpire(){
       window.scrollTo({top:0});
       setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),350);
     }
+    if(screen==='battle'){
+      window.scrollTo({top:0});
+    }
     if(screen==='openingCinematic'){
       window.scrollTo({top:0});
-      const DURATION=5200;
-      let start=null;let raf=null;
-      const step=ts=>{
-        if(!start)start=ts;
-        const t=Math.min((ts-start)/DURATION,1);
-        const ease=t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
-        const btn=cinematicBtnRef.current;
-        const target=btn?Math.max(0,btn.offsetTop+btn.offsetHeight-window.innerHeight+100):document.body.scrollHeight;
-        window.scrollTo({top:ease*target});
-        if(t<1)raf=requestAnimationFrame(step);
-      };
-      const tid=setTimeout(()=>{raf=requestAnimationFrame(step);},600);
-      return()=>{clearTimeout(tid);if(raf)cancelAnimationFrame(raf);};
+      const tid=setTimeout(()=>{
+        cinematicBtnRef.current?.scrollIntoView({behavior:'smooth',block:'end'});
+      },440);
+      return()=>{clearTimeout(tid);};
     }
   },[screen]);
 
@@ -1467,7 +1470,7 @@ export default function ComicSpire(){
 
   // ═══ OPENING CINEMATIC ═══
   if(screen==='openingCinematic')return (
-    <div style={{minHeight:'200vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',fontFamily:FB,color:'#fff',padding:'60px 16px 40px',position:'relative',overflow:'hidden'}}>
+    <div style={{minHeight:'128vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',fontFamily:FB,color:'#fff',padding:'60px 16px 18px',position:'relative',overflow:'hidden'}}>
       <style>{CSS}</style><DebugPanel/>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,#ffffff12 0%,#000000c0 70%,#000 100%)',pointerEvents:'none'}}/>
       <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:760,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
@@ -1730,7 +1733,7 @@ export default function ComicSpire(){
     const allPageCards=[...battle.placedCards,...battle.pendingCharges,...battle.activeCharges];
 
     return (
-      <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:0.9}}>
+      <div style={{minHeight:'100vh',background:bg1,padding:'8px 10px 4px',fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:0.9}}>
         <style>{CSS}</style><DebugPanel/><TooltipOverlay/><AlignNotif/>
         {slatePreview!==null&&(()=>{
           const{cards,variant}=slatePreview;
@@ -1940,7 +1943,7 @@ export default function ComicSpire(){
           <span style={{fontFamily:FD,fontSize:10,color:'#555',letterSpacing:1,marginRight:4}}>T{battle.turn}</span>
           {battle.log.slice(battle.turnLogStart).map((m,i,arr)=><span key={i} style={{color:i===arr.length-1?'#ccc':'#555'}}>{m}</span>)}
         </div>}
-        <div style={{marginBottom:4}}>
+        <div style={{marginBottom:2}}>
           <div style={{fontFamily:FD,fontSize:13,color:selCard?'#ffcc33':'#888',textAlign:'center',marginBottom:3,letterSpacing:1}}>
             {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} · click golden panel`:'SELECT A SUPERPOWER'}
           </div>
@@ -1948,7 +1951,7 @@ export default function ComicSpire(){
             {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>{const nextId=card.id===selectedCardId?null:card.id;if(nextId){audio.unlock();audio.playSelect();if(card.type==='draw'){audio.playDraw();}}setSelectedCardId(nextId);}} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
           </div>
         </div>
-        <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center'}}>
+        <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center',marginBottom:2}}>
           <button onClick={()=>setShowLog(true)} style={{fontFamily:FD,fontSize:11,padding:'4px 12px',background:'#1a1a1a',border:'1px solid #333',borderRadius:4,color:'#666',cursor:'pointer',letterSpacing:1}}>📋 LOG</button>
           <button onClick={endTurn} disabled={!isP} style={{fontFamily:FD,fontSize:15,padding:'5px 28px',background:isP?(battle.placedCards.length+battle.activeCharges.length>0?'linear-gradient(135deg,#ff3366,#ff6600)':'#444'):'#222',border:`2px solid ${isP?'#fff':'#333'}`,borderRadius:7,color:isP?'#fff':'#555',cursor:isP?'pointer':'not-allowed'}}>
             {battle.activeCharges.length>0&&battle.placedCards.length===0?`FIRE ${battle.activeCharges.length} CHARGE(S)`:
