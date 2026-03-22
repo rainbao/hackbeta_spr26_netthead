@@ -668,7 +668,7 @@ function bReduce(state,action){
         switch(intentCard.intent){
           case 'attack':{
             let d=Math.max(1,(intentCard.intentVal-(en.weakened||0))-pDef);
-            const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;pHp=Math.max(0,pHp-d);
+            const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;if(d>0)pHp=Math.max(0,pHp-d);if(action.damageFn&&d>0)action.damageFn();
             s.log=[...s.log,`🔴 [${panelNum}] ${en.Name} ${cn}: ${d} dmg${bl>0?' ('+bl+' blk)':''}${pDef>0?` [−${pDef} def]`:''}`];break;}
           case 'magic':{let d=Math.max(1,intentCard.intentVal-Math.floor(pDef*0.5));const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(pBlk,b2);pBlk-=bl;d=p2+b2-bl;pHp=Math.max(0,pHp-d);
             s.log=[...s.log,`🟣 [${panelNum}] ${en.Name} ${cn}: ${d} magic${bl>0?` (${bl} blk, ${p2} pierced)`:''}`];break;}
@@ -975,6 +975,7 @@ export default function ComicSpire(){
   },[audio,relics,player]);
 
   const endTurn=useCallback(()=>{
+    audio.unlock();audio.playSelect();
     if(battle.phase!=='player')return;setAnimPhase('r');
     // Evilness shifts based on card keywords played this turn
     const allPlayedCards=[...battle.queuedPages.flatMap(p=>p.cards||[]),...battle.placedCards];
@@ -1002,7 +1003,7 @@ export default function ComicSpire(){
     }
     setTimeout(()=>{
       dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,playerDef:player?.def||2,
-        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
+        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer,damageFn:()=>{audio.unlock();audio.playPlace('momentum');}});
       doShake();setAnimPhase(null);
     },400);
   },[battle,player,relics,doShake,healPlayer,evilness]);
@@ -1041,10 +1042,11 @@ export default function ComicSpire(){
   },[hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus]);
 
   const handleEvent=useCallback(opt=>{
+    audio.unlock();audio.playSelect();
     const cp=deck.filter(c=>c.copiedFrom);
     if(opt.fx==='upgrade'){if(cp.length>0){const t=[...cp].sort((a,b)=>a.value-b.value)[0];setDeck(p=>p.map(x=>x.id===t.id?{...x,value:Math.floor(x.value*1.3),name:x.name+'+'}:x));}}
     else if(opt.fx==='remove'){const b=deck.filter(c=>!c.copiedFrom&&c.tier===0);if(b.length>0)setDeck(p=>p.filter(x=>x.id!==b[0].id));}
-    else if(opt.fx==='heal')healPlayer(opt.v);
+    else if(opt.fx==='heal'){audio.playPlace('echo');healPlayer(opt.v);}
     else if(opt.fx==='gold')setGold(p=>p+opt.v);
     else if(opt.fx==='maxEn'){setMaxEnergy(p=>Math.min(5,p+1));setPlayer(p=>p?{...p,maxHp:Math.max(20,p.maxHp-15),hp:Math.max(1,p.hp-15)}:p);}
     else if(opt.fx==='dupe'){if(cp.length>0){const b=[...cp].sort((a,b)=>b.value-a.value)[0];setDeck(p=>[...p,{...b,id:uid()}]);}}
@@ -1830,7 +1832,7 @@ export default function ComicSpire(){
     <div style={{maxWidth:360,background:bg2,border:`1.5px solid ${accent}44`,borderRadius:10,padding:18,textAlign:'center',animation:'fadeUp 0.3s'}}>
       <div style={{fontSize:24,marginBottom:3}}>❓</div>
       <h2 style={{fontFamily:FD,fontSize:18,color:accent,marginBottom:8}}>{curEvent.title}</h2>
-      {curEvent.opts.map((o,i)=> <button key={i} onClick={()=>handleEvent(o)} style={{display:'block',width:'100%',fontFamily:FB,fontWeight:700,fontSize:10,padding:'7px 10px',marginBottom:4,background:'#00000044',border:`1px solid ${accent}33`,borderRadius:6,color:'#ddd',cursor:'pointer',textAlign:'left',transition:'all 0.2s'}}
+      {curEvent.opts.map((o,i)=> <button key={i} onClick={()=>{audio.unlock();audio.playSelect();handleEvent(o);}} style={{display:'block',width:'100%',fontFamily:FB,fontWeight:700,fontSize:10,padding:'7px 10px',marginBottom:4,background:'#00000044',border:`1px solid ${accent}33`,borderRadius:6,color:'#ddd',cursor:'pointer',textAlign:'left',transition:'all 0.2s'}}
         onMouseEnter={e=>{e.currentTarget.style.borderColor=accent;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${accent}33`;}}>{evBtnText(o)}</button>)}
     </div>
   </div>);}
