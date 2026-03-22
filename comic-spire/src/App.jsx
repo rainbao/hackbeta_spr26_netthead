@@ -577,6 +577,43 @@ function bReduce(state,action){
       if(card.keyword==='frenzy')s.frenzyCost=(s.frenzyCost||0)+1;
       return s;}
 
+    case 'RESOLVE_NEXT_PAGE':{
+      if(s.phase!=='player'||!s.enemy||s.queuedPages.length===0)return s;
+      const en={...s.enemy};
+      const{relics,playerHp,playerMaxHp}=action;
+      const nextPage=s.queuedPages[0];
+      const pageCards=nextPage?.cards||[];
+      if(pageCards.length===0){
+        s.queuedPages=s.queuedPages.slice(1);
+        return s;
+      }
+
+      let totalHeal=0;
+      const localHealFn=amt=>{totalHeal+=Math.max(0,amt);};
+      const sorted=[...pageCards].sort((a,b)=>(a.row*COLS+a.col)-(b.row*COLS+b.col));
+      s.log=[...s.log,`⚡ Instant resolve: ${sorted.length} card${sorted.length===1?'':'s'}`];
+
+      let prev=null;
+      sorted.forEach(card=>{
+        if(en.gameHp<=0)return;
+        const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev);
+        if(msg)s.log=[...s.log,msg];
+        prev=card;
+      });
+
+      if(totalHeal!==0){
+        const nextHp=Math.max(0,Math.min(playerMaxHp,playerHp+totalHeal));
+        action.setPlayerHp(nextHp);
+      }
+
+      s.enemy=en;
+      s.queuedPages=s.queuedPages.slice(1);
+      if(en.gameHp<=0){
+        s.victory=true;
+        s.phase='done';
+      }
+      return s;}
+
     case 'END_TURN':{
       if(s.phase!=='player')return s;s.phase='resolving';
       const en={...s.enemy};const{relics,playerHp,playerMaxHp}=action;
@@ -810,6 +847,7 @@ export default function ComicSpire(){
   const[damageFlash,setDamageFlash]=useState(false);
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
+  const prevQueuedPagesRef=useRef(0);
   const mapScrollRef=useRef(null);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
@@ -856,6 +894,33 @@ export default function ComicSpire(){
     setRewardCards(en.deck||[en.signature]);
     setTimeout(()=>setScreen('reward'),800);}},[battle.victory]);
   useEffect(()=>{if(battle.defeat&&screen==='battle')setTimeout(()=>setScreen('gameOver'),600);},[battle.defeat]);
+
+  useEffect(()=>{
+    const currQueued=battle.queuedPages.length;
+    const prevQueued=prevQueuedPagesRef.current;
+
+    if(screen!=='battle'){
+      prevQueuedPagesRef.current=currQueued;
+      return;
+    }
+
+    if(battle.phase==='player'&&currQueued>prevQueued){
+      const page=battle.queuedPages[currQueued-1];
+      const cardData=(page?.cards||[]).slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
+      if(cardData.length>0){
+        const slateVariant=pick(['Bubble','Brutal','Action']);
+        setSlatePreview({cards:cardData,variant:slateVariant});
+        setTimeout(()=>setSlatePreview(null),900);
+      }
+    }
+
+    if(battle.phase==='player'&&currQueued>0){
+      dispatch({type:'RESOLVE_NEXT_PAGE',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p)});
+      doShake();
+    }
+
+    prevQueuedPagesRef.current=battle.queuedPages.length;
+  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake]);
 
   const startGame=useCallback(()=>{
     setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,speed:55,def:2});
