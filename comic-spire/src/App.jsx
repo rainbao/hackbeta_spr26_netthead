@@ -933,7 +933,7 @@ export default function ComicSpire(){
     setPotLv(1);setNgPlus(0);setCopiedAbilities([]);setRelics([]);setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
     enemyCache.current={};
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
-    setMapLog(['Choose a path. Branches lock in for 3 floors.']);setScreen('map');
+    setMapLog(['Find a route through the unknown city. Branches lock in for 3 floors.']);setScreen('openingCinematic');
   },[]);
 
   const startNewGamePlus=useCallback((currentNgPlus)=>{
@@ -1148,7 +1148,7 @@ export default function ComicSpire(){
         {/* subtitle rule */}
         <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 14px',animation:'fadeUp 0.5s 0.28s ease both',opacity:0}}>
           <div style={{width:60,height:1,background:'linear-gradient(90deg,transparent,#ffaa3388)'}}/>
-          <span style={{fontFamily:FB,fontSize:11,letterSpacing:5,color:'#ffaa3399',textTransform:'uppercase'}}>A Comic Spire Story</span>
+          <span style={{fontFamily:FB,fontSize:11,letterSpacing:5,color:'#ffaa3399',textTransform:'uppercase'}}>Escape From The Lab</span>
           <div style={{width:60,height:1,background:'linear-gradient(270deg,transparent,#ffaa3388)'}}/>
         </div>
 
@@ -1179,6 +1179,25 @@ export default function ComicSpire(){
         {/* version footer */}
         <div style={{marginTop:28,fontFamily:FB,fontSize:10,color:'#333',letterSpacing:3,animation:'fadeUp 0.5s 0.6s ease both',opacity:0}}>
           v0.9-alpha
+        </div>
+      </div>
+    </div>);
+
+  // ═══ OPENING CINEMATIC ═══
+  if(screen==='openingCinematic')return (
+    <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FB,color:'#fff',padding:16,position:'relative',overflow:'hidden'}}>
+      <style>{CSS}</style>
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,#ffffff12 0%,#000000c0 70%,#000 100%)',pointerEvents:'none'}}/>
+      <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:760,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+        <div style={{fontFamily:FD,fontSize:'clamp(24px,4vw,34px)',color:'#ffd46b',letterSpacing:3,textShadow:'0 2px 0 #000,0 0 18px #ffbb5566',textAlign:'center'}}>ORIGIN AWAKENING</div>
+        <img src="/assets/background_with_sprite.png" alt="Potential Man cinematic" style={{width:'100%',maxWidth:640,aspectRatio:'1 / 1',objectFit:'cover',borderRadius:10,border:'2px solid #ffd46b66',boxShadow:'0 0 38px #7d55ff55,0 0 20px #ffbb5544',imageRendering:'pixelated'}}/>
+        <div style={{fontFamily:FB,fontSize:12,color:'#c9c2e8',textAlign:'center',maxWidth:640,lineHeight:1.6,padding:'0 8px'}}>
+          Potential Man escapes a hidden lab and stumbles into a city he has never seen.
+          Build momentum, channel power, and survive the streets ahead.
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
+          <button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:14,padding:'8px 24px',background:'linear-gradient(135deg,#ff9900,#ff5500)',border:'2px solid #fff',borderRadius:6,color:'#fff',cursor:'pointer',letterSpacing:2,textShadow:'1px 1px 0 #000'}}>ENTER THE CITY</button>
+          <button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:12,padding:'8px 16px',background:'#1b1b2b',border:'1px solid #5b5b7a',borderRadius:6,color:'#c7c7d8',cursor:'pointer'}}>SKIP</button>
         </div>
       </div>
     </div>);
