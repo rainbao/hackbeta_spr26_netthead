@@ -83,7 +83,7 @@ function makeEnemyPlan(en){
 // ═══ KEYWORD DEFINITIONS (shown on hover) ═══
 const KW_INFO={
   combo:{name:'COMBO',color:'#ff4455',desc:'Each COMBO card played this turn adds +2 damage to the next COMBO card.'},
-  channel:{name:'CHANNEL',color:'#bb55ff',desc:'Stacks magic damage. Releases at end of turn — pierces ALL block and applies Weaken.'},
+  channel:{name:'CHANNEL',color:'#bb55ff',desc:'Stacks magic damage. Releases at end of turn. Pierces ALL block and applies Weaken.'},
   momentum:{name:'MOMENTUM',color:'#33ddff',desc:'Each card played adds +1. At 3: ONE free card.'},
   fortify:{name:'FORTIFY',color:'#4499ff',desc:'50% of your Block carries over to next turn.'},
   corrode:{name:'CORRODE',color:'#44dd66',desc:'Poison that NEVER decays. Stacks permanently.'},
@@ -236,29 +236,29 @@ function makeEnemyDeck(hero,floor){
     mk('Laser Burst','Deal 8 magic (40% pierces block)','magic','🔮',8),
     mk('Reality Warp','ECHO: copies previous card at 50%','magic','🪞',3,'echo'),
     mk('Arcane Shield','Gain 7 Block. FORTIFY 50% carries','defend','🔷',7,'fortify'),
-    mk('Focused Beam','⏳ CHANNEL 22 next turn — full pierce','magic','⚡',22,'channel',1,1,true),
+    mk('Focused Beam','⏳ CHANNEL 22 next turn. Full pierce','magic','⚡',22,'channel',1,1,true),
     mk('Overchannel','OVERCHANNEL 10: channels + corrodes 4','magic','🌀',10,'overchannel'),
     mk('Solar Ray','Deal 7 magic laser (40% pierces)','magic','☀️',7)];
 
   if(best==='Intelligence')return[sig,
     mk('Aerial Strike','Deal 6 from above, then draw 1 next turn','attack','🦅',6),
-    mk('Wind Slash','Deal 5, hits twice — aerial agility','attack','💨',5,'momentum',1,2),
+    mk('Wind Slash','Deal 5, hits twice. Aerial agility','attack','💨',5,'momentum',1,2),
     mk('Healing Wind','Heal 8 HP','heal','🌿',8),
     mk('Tactical Read','Draw 2 extra superpowers next turn','draw','📖',2),
     mk('Air Shield','Gain 8 Block. FORTIFY','defend','🌪️',8,'fortify'),
-    mk('Dive Bomb','⏳ Deal 16 next turn — fly-by strike','attack','🦅',16,'',1,1,true),
+    mk('Dive Bomb','⏳ Deal 16 next turn. Fly-by strike','attack','🦅',16,'',1,1,true),
     mk('Stratosphere','CHANNEL 10: altitude beam, full pierce','magic','☁️',10,'channel'),
     mk('Recovery','Heal 6 HP + draw 1 next turn','heal','💚',6)];
 
   if(best==='Speed')return[sig,
-    mk('Blitz','Deal 7×2. FRENZY — free, 2 slots','attack','⚡',7,'frenzy',0,2),
+    mk('Blitz','Deal 7×2. FRENZY. Free, 2 slots','attack','⚡',7,'frenzy',0,2),
     mk('Rapid Jabs','Deal 4, hits 3 times. COMBO','attack','👊',4,'combo',1,3),
     mk('Dash Strike','Deal 10. MOMENTUM +1','attack','💨',10,'momentum'),
     mk('Phase Shift','Gain 6 Block. MOMENTUM +1','defend','💨',6,'momentum'),
     mk('Afterburn','Deal 8. COMBO +3','attack','🔥',8,'combo'),
     mk('Lightning Reflexes','Gain 8 Block','defend','🛡️',8),
     mk('Overdrive','⏳ Deal 16×2 next turn. MOMENTUM','attack','⚡',16,'momentum',1,2,true),
-    mk('Speed Blitz','Deal 5. FRENZY — free','attack','💥',5,'frenzy',0,1)];
+    mk('Speed Blitz','Deal 5. FRENZY. Free','attack','💥',5,'frenzy',0,1)];
 
   if(best==='Defense')return[sig,
     mk('Iron Wall','Gain 10 Block. FORTIFY 50% carries','defend','🏰',10,'fortify'),
@@ -286,7 +286,7 @@ function makeEnemyDeck(hero,floor){
     mk('Desperate Strike','Deal 16. BLOOD 8HP. 2× when low','rage','💢',16,'blood',0,1,false,8),
     mk('Rage Combo','Deal 8. COMBO +3','attack','😤',8,'combo'),
     mk('Battle Roar','Gain 6 Block','defend','😤',6),
-    mk('Wild Swing','Deal 10×2. FRENZY — free','attack','💢',10,'frenzy',0,2),
+    mk('Wild Swing','Deal 10×2. FRENZY. Free','attack','💢',10,'frenzy',0,2),
     mk('Pain to Power','Deal 10. BLOOD 3HP','rage','🔥',10,'blood',0,1,false,3),
     mk('Berserker Charge','⏳ Deal 20. BLOOD 5HP next turn','rage','⚡',20,'blood',1,1,true,5),
     mk('Fury Strike','Deal 6. COMBO +3','attack','💥',6,'combo')];}
@@ -574,7 +574,7 @@ function bReduce(state,action){
       s.page=doPlace(s.page,row,col,card,card.id);
       if(card.charge){
         s.pendingCharges=[...s.pendingCharges,{...card,row,col}];
-        s.log=[...s.log,`⏳ ${card.name} CHARGING — fires next turn!`];
+        s.log=[...s.log,`⏳ ${card.name} CHARGING. Fires next turn!`];
       }else{
         s.placedCards=[...s.placedCards,{...card,row,col}];
       }
@@ -788,6 +788,7 @@ export default function ComicSpire(){
   },[]);
   
   const[screen,setScreen]=useState('title');
+  const[tutStep,setTutStep]=useState(0);
   const[player,setPlayer]=useState(null);
   const[deck,setDeck]=useState([]);
   const[gold,setGold]=useState(0);
@@ -836,16 +837,34 @@ export default function ComicSpire(){
   const loadedSlateRef=useRef(new Set());
   const[slateReadyTick,setSlateReadyTick]=useState(0);
   const mapScrollRef=useRef(null);
+  const cinematicBtnRef=useRef(null);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
   const[alignNotif,setAlignNotif]=useState(null);
   const audio=useMemo(()=>createAudioSystem(),[]);
   // Clear tooltip and floaters on any screen change
   useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
-  // Cutscene: scroll to reachable nodes (bottom of column-reverse map) whenever map opens
+  // Cutscene: scroll to bottom whenever map or opening cinematic opens
   useEffect(()=>{
     if(screen==='map'){
+      window.scrollTo({top:0});
       setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),350);
+    }
+    if(screen==='openingCinematic'){
+      window.scrollTo({top:0});
+      const DURATION=5200;
+      let start=null;let raf=null;
+      const step=ts=>{
+        if(!start)start=ts;
+        const t=Math.min((ts-start)/DURATION,1);
+        const ease=t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+        const btn=cinematicBtnRef.current;
+        const target=btn?Math.max(0,btn.offsetTop+btn.offsetHeight-window.innerHeight+100):document.body.scrollHeight;
+        window.scrollTo({top:ease*target});
+        if(t<1)raf=requestAnimationFrame(step);
+      };
+      const tid=setTimeout(()=>{raf=requestAnimationFrame(step);},600);
+      return()=>{clearTimeout(tid);if(raf)cancelAnimationFrame(raf);};
     }
   },[screen]);
 
@@ -957,7 +976,7 @@ export default function ComicSpire(){
     // Full HP restore as reward for completing the run
     setPlayer(p=>p?{...p,hp:p.maxHp}:p);
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
-    setMapLog([`⚡ ASCENSION ${nextNg} — enemies are ${Math.round(nextNg*35)}% stronger!`]);
+    setMapLog([`⚡ ASCENSION ${nextNg}. Enemies are ${Math.round(nextNg*35)}% stronger!`]);
     setScreen('map');
   },[]);
 
@@ -1162,7 +1181,7 @@ export default function ComicSpire(){
         {/* subtitle rule */}
         <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 14px',animation:'fadeUp 0.5s 0.28s ease both',opacity:0}}>
           <div style={{width:60,height:1,background:'linear-gradient(90deg,transparent,#ffaa3388)'}}/>
-          <span style={{fontFamily:FB,fontSize:11,letterSpacing:5,color:'#ffaa3399',textTransform:'uppercase'}}>Escape From The Lab</span>
+          <span style={{fontFamily:FB,fontSize:11,letterSpacing:5,color:'#ffaa3399',textTransform:'uppercase'}}>A Comic City Story</span>
           <div style={{width:60,height:1,background:'linear-gradient(270deg,transparent,#ffaa3388)'}}/>
         </div>
 
@@ -1178,17 +1197,23 @@ export default function ComicSpire(){
           )}
         </div>
 
-        {/* CTA button */}
-        <button onClick={startGame} style={{fontFamily:FD,fontSize:22,padding:'15px 72px',
-          background:'linear-gradient(135deg,#ff9900,#ff4400)',
-          border:'none',borderRadius:3,color:'#fff',cursor:'pointer',
-          letterSpacing:6,textTransform:'uppercase',
-          textShadow:'1px 2px 0 #00000088',
-          boxShadow:'0 0 48px #ff660044,0 5px 0 #882200,0 10px 30px #00000066',
-          animation:'fadeUp 0.5s 0.5s ease both,float 3s 1s ease-in-out infinite',
-          opacity:0}}>
-          NEW GAME
-        </button>
+        {/* CTA buttons */}
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12,animation:'fadeUp 0.5s 0.5s ease both',opacity:0}}>
+          <button onClick={startGame} style={{fontFamily:FD,fontSize:22,padding:'15px 72px',
+            background:'linear-gradient(135deg,#ff9900,#ff4400)',
+            border:'none',borderRadius:3,color:'#fff',cursor:'pointer',
+            letterSpacing:6,textTransform:'uppercase',
+            textShadow:'1px 2px 0 #00000088',
+            boxShadow:'0 0 48px #ff660044,0 5px 0 #882200,0 10px 30px #00000066',
+            animation:'float 3s 1s ease-in-out infinite'}}>
+            NEW GAME
+          </button>
+          <button onClick={()=>{setTutStep(0);setScreen('tutorial');}} style={{fontFamily:FD,fontSize:14,padding:'10px 48px',
+            background:'transparent',border:'1px solid #ffaa3344',borderRadius:3,
+            color:'#ffaa3388',cursor:'pointer',letterSpacing:4,textTransform:'uppercase'}}>
+            TUTORIAL
+          </button>
+        </div>
 
         {/* version footer */}
         <div style={{marginTop:28,fontFamily:FB,fontSize:10,color:'#333',letterSpacing:3,animation:'fadeUp 0.5s 0.6s ease both',opacity:0}}>
@@ -1199,7 +1224,7 @@ export default function ComicSpire(){
 
   // ═══ OPENING CINEMATIC ═══
   if(screen==='openingCinematic')return (
-    <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FB,color:'#fff',padding:16,position:'relative',overflow:'hidden'}}>
+    <div style={{minHeight:'200vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',fontFamily:FB,color:'#fff',padding:'60px 16px 40px',position:'relative',overflow:'hidden'}}>
       <style>{CSS}</style>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,#ffffff12 0%,#000000c0 70%,#000 100%)',pointerEvents:'none'}}/>
       <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:760,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
@@ -1209,7 +1234,7 @@ export default function ComicSpire(){
           Potential Man escapes a hidden lab and stumbles into a city he has never seen.
           Build momentum, channel power, and survive the streets ahead.
         </div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
+        <div ref={cinematicBtnRef} style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
           <button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:14,padding:'8px 24px',background:'linear-gradient(135deg,#ff9900,#ff5500)',border:'2px solid #fff',borderRadius:6,color:'#fff',cursor:'pointer',letterSpacing:2,textShadow:'1px 1px 0 #000'}}>ENTER THE CITY</button>
           <button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:12,padding:'8px 16px',background:'#1b1b2b',border:'1px solid #5b5b7a',borderRadius:6,color:'#c7c7d8',cursor:'pointer'}}>SKIP</button>
         </div>
@@ -1252,7 +1277,7 @@ export default function ComicSpire(){
           </div>
           {codexTab==='powers'&&<>
             {copiedAbilities.length===0&&<div style={{fontSize:11,color:'#444',fontFamily:FB}}>No superpowers acquired yet.</div>}
-            {copiedAbilities.map((a,i)=> <div key={i} style={{fontSize:11,color:'#aaa',padding:'3px 0'}}>{a.icon} {a.sig} <KW k={a.kw}/> — {a.name}</div>)}
+            {copiedAbilities.map((a,i)=> <div key={i} style={{fontSize:11,color:'#aaa',padding:'3px 0'}}>{a.icon} {a.sig} <KW k={a.kw}/> · {a.name}</div>)}
             {relics.length>0&&<div style={{marginTop:8,borderTop:'1px solid #333',paddingTop:5}}><div style={{fontFamily:FD,fontSize:11,color:'#ffaa33',marginBottom:3}}>AMPS</div>{relics.map((r,i)=> <div key={i} style={{fontSize:11,color:'#888',padding:'2px 0'}}>{r.icon} {r.name}: {r.desc}</div>)}</div>}
           </>}
           {codexTab==='stats'&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 12px'}}>
@@ -1407,7 +1432,7 @@ export default function ComicSpire(){
         {/* Attribute allocation */}
         <div style={{width:'100%',maxWidth:360,background:'#ffffff06',border:'1px solid #ffffff22',borderRadius:8,padding:'10px 12px',marginBottom:10,boxSizing:'border-box'}}>
           <div style={{textAlign:'center',marginBottom:8}}>
-            <div style={{fontFamily:FD,fontSize:14,color:'#ffd700'}}>LEVEL UP — Lv.{potLv}</div>
+            <div style={{fontFamily:FD,fontSize:14,color:'#ffd700'}}>LEVEL UP · Lv.{potLv}</div>
             <div style={{fontSize:11,color:remaining>0?'#ffcc33':'#55ddbb',marginTop:2}}>
               {remaining>0?`${remaining} point${remaining!==1?'s':''} to spend`:'All points spent ✓'}
             </div>
@@ -1584,7 +1609,7 @@ export default function ComicSpire(){
         <div style={{background:'#f5f0e8',borderRadius:8,padding:6,flex:1,maxWidth:280,minWidth:200,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
           <div style={{position:'absolute',inset:0,borderRadius:4,opacity:0.03,backgroundImage:'radial-gradient(circle,#000 0.5px,transparent 0.5px)',backgroundSize:'6px 6px',pointerEvents:'none'}}/>
           <div style={{fontFamily:FD,fontSize:11,color:'#888',textAlign:'center',marginBottom:4,letterSpacing:1}}>
-            {totalPlacedCount>0?`${totalPlacedCount} cards · ${totalPageCount} page${totalPageCount===1?'':'s'} — END TURN ↘`:
+            {totalPlacedCount>0?`${totalPlacedCount} cards · ${totalPageCount} page${totalPageCount===1?'':'s'} · END TURN ↘`:
               battle.activeCharges.length>0?`⏳ ${battle.activeCharges.length} charge(s) ready`:
               '★ CREATE YOUR PANEL ★'}
           </div>
@@ -1671,7 +1696,7 @@ export default function ComicSpire(){
         </div>}
         <div style={{marginBottom:4}}>
           <div style={{fontFamily:FD,fontSize:13,color:selCard?'#ffcc33':'#888',textAlign:'center',marginBottom:3,letterSpacing:1}}>
-            {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} — click golden panel`:'SELECT A SUPERPOWER'}
+            {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} · click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
             {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>{const nextId=card.id===selectedCardId?null:card.id;if(nextId){audio.unlock();audio.playSelect();if(card.type==='draw'){audio.playDraw();}}setSelectedCardId(nextId);}} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
@@ -1718,7 +1743,7 @@ export default function ComicSpire(){
           </button>
         </div>
         <div style={{fontFamily:FD,fontSize:9,color:enColor,marginBottom:8}}>
-          {!canAbsorb?`Max absorbs reached (${MAX_ABSORB}/3) — click Done to continue`:absorbedCardIds.length>0?`${absorbedCardIds.length}/${MAX_ABSORB} absorbed — keep going or click Done`:`Browse their deck. Select up to ${MAX_ABSORB} cards to absorb into your build.`}
+          {!canAbsorb?`Max absorbs reached (${MAX_ABSORB}/3). Click Done to continue.`:absorbedCardIds.length>0?`${absorbedCardIds.length}/${MAX_ABSORB} absorbed. Keep going or click Done.`:`Browse their deck. Select up to ${MAX_ABSORB} cards to absorb into your build.`}
         </div>
 
         {/* Three-column swap layout */}
@@ -1756,7 +1781,7 @@ export default function ComicSpire(){
                       ✕ Cancel
                     </button>
                   </div>
-                  {canAbsorb&&<div style={{fontFamily:FD,fontSize:7,color:'#444',marginTop:8,letterSpacing:1,textAlign:'center'}}>— or click a card in Your Deck to swap —</div>}
+                  {canAbsorb&&<div style={{fontFamily:FD,fontSize:7,color:'#444',marginTop:8,letterSpacing:1,textAlign:'center'}}>or click a card in Your Deck to swap</div>}
                   {!canAbsorb&&<div style={{fontFamily:FD,fontSize:7,color:'#ff4455',marginTop:6,letterSpacing:1}}>Absorb limit reached ({MAX_ABSORB}/3)</div>}
                 </div>
               : <div style={{fontFamily:FD,fontSize:8,color:'#333',padding:'10px 0'}}>← select a card</div>}
@@ -1802,7 +1827,7 @@ export default function ComicSpire(){
       <div style={{padding:'10px 16px',background:'#ffaa3311',border:`2px solid ${gold>=90?'#ffaa33':'#555'}`,borderRadius:10,textAlign:'center',maxWidth:220}}>
         <div style={{fontSize:28,marginBottom:4}}>⚡</div>
         <div style={{fontFamily:FD,fontSize:14,color:'#ffaa33',marginBottom:2}}>+1 MAX ENERGY</div>
-        <div style={{fontFamily:'Courier Prime,monospace',fontSize:10,color:'#888',marginBottom:8,lineHeight:1.4}}>Permanently gain 1 energy per turn. Rare and powerful — use wisely.</div>
+        <div style={{fontFamily:'Courier Prime,monospace',fontSize:10,color:'#888',marginBottom:8,lineHeight:1.4}}>Permanently gain 1 energy per turn. Rare and powerful. Use wisely.</div>
         <div style={{fontFamily:FD,fontSize:16,color:gold>=90?'#ffd700':'#ff4455',marginBottom:6}}>💰 90</div>
         <button onClick={()=>{if(gold>=90){setGold(p=>p-90);setMaxEnergy(p=>Math.min(5,p+1));}}} disabled={gold<90} style={{fontFamily:FD,fontSize:12,padding:'5px 18px',background:gold>=90?'linear-gradient(135deg,#ffaa33,#ff8800)':'#222',border:`1px solid ${gold>=90?'#ffcc55':'#444'}`,borderRadius:6,color:gold>=90?'#fff':'#555',cursor:gold>=90?'pointer':'not-allowed'}}>
           {gold>=90?'BUY':'Need 💰90'}
@@ -1821,7 +1846,7 @@ export default function ComicSpire(){
     const evBtnText=(o)=>{
       if(o.fx==='upgrade'&&loCard)return`💪 Upgrade "${loCard.name}": ${loCard.value} → ${Math.floor(loCard.value*1.3)}`;
       if(o.fx==='upWeak'&&loCard)return`🔄 Upgrade "${loCard.name}": ${loCard.value} → ${Math.floor(loCard.value*1.4)}`;
-      if(o.fx==='dupe'&&hiCard)return`🪞 Duplicate "${hiCard.name}" (value ${hiCard.value}) — adds a copy to your deck`;
+      if(o.fx==='dupe'&&hiCard)return`🪞 Duplicate "${hiCard.name}" (value ${hiCard.value}). Adds a copy to your deck`;
       if(o.fx==='remove'&&rmCard)return`🗑️ Remove "${rmCard.name}" from your deck forever`;
       if(o.fx==='remove'&&!rmCard)return`🗑️ Remove a basic superpower (none available)`;
       return o.text;};
@@ -1834,6 +1859,226 @@ export default function ComicSpire(){
         onMouseEnter={e=>{e.currentTarget.style.borderColor=accent;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${accent}33`;}}>{evBtnText(o)}</button>)}
     </div>
   </div>);}
+
+  // ═══ TUTORIAL ═══
+  if(screen==='tutorial'){
+    const TUT_STEPS=[
+      {
+        title:'Welcome, Potential Man',
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
+            <div style={{fontSize:64,animation:'float 3s ease-in-out infinite'}}>⚡</div>
+            <div style={{fontFamily:FD,fontSize:22,color:'#ffaa33',letterSpacing:4}}>POTENTIAL MAN</div>
+            <div style={{fontFamily:FB,fontSize:12,color:'#888',maxWidth:300,textAlign:'center',lineHeight:1.7}}>
+              A hero of pure potential. Average in every stat, but with the power to become anything.
+            </div>
+          </div>
+        ),
+        desc:'You will fight your way through the Comic City, a sprawling world of villains and heroes whose powers you can copy. Each victory makes you stronger. Each defeat ends your run.',
+      },
+      {
+        title:'The Comic Page Grid',
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,width:160,height:160}}>
+              {['top-left','top-right','bottom-left','bottom-right'].map((pos,i)=>(
+                <div key={pos} style={{background:'#1a1a2a',border:'2px solid #ffaa3344',borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:2}}>
+                  <div style={{fontFamily:FB,fontSize:9,color:'#ffaa3366'}}>Panel {i+1}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontFamily:FB,fontSize:10,color:'#555',letterSpacing:2}}>2 × 2 COMIC PAGE</div>
+          </div>
+        ),
+        desc:'Each turn you arrange cards on a 2×2 comic panel grid. Small cards (cost 1) fill one panel. Larger cards span multiple panels. When you hit END TURN, all cards resolve.',
+      },
+      {
+        title:'Reading Order Resolution',
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,width:160,height:160}}>
+              {[['1','#ff4455','COMBO'],['2','#bb55ff','CHANNEL'],['3','#4499ff','DEFEND'],['4','#44dd66','POISON']].map(([n,col,label])=>(
+                <div key={n} style={{background:`${col}18`,border:`2px solid ${col}55`,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:1}}>
+                  <div style={{fontFamily:FD,fontSize:20,color:col}}>{n}</div>
+                  <div style={{fontFamily:FB,fontSize:8,color:`${col}99`}}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontFamily:FD,fontSize:10,color:'#666'}}>→</span>
+              <span style={{fontFamily:FB,fontSize:10,color:'#888'}}>Left to Right, Top to Bottom</span>
+            </div>
+          </div>
+        ),
+        desc:'Cards resolve in reading order: top-left, top-right, bottom-left, bottom-right. Order matters. A CHANNEL card stacks damage before a release, and a COMBO card buffs what follows it.',
+      },
+      {
+        title:'Energy & Card Costs',
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+            <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+              {[{cost:1,col:'#ff4455',name:'Strike',icon:'⚔️'},{cost:2,col:'#bb55ff',name:'Blast',icon:'✨'},{cost:3,col:'#4499ff',name:'Bulwark',icon:'🛡️'}].map(c=>(
+                <div key={c.name} style={{background:'#1a1a2a',border:`2px solid ${c.col}55`,borderRadius:6,padding:'8px 10px',textAlign:'center',width:70}}>
+                  <div style={{fontSize:20}}>{c.icon}</div>
+                  <div style={{fontFamily:FD,fontSize:11,color:c.col,marginTop:2}}>{c.name}</div>
+                  <div style={{marginTop:4,background:`${c.col}33`,border:`1px solid ${c.col}88`,borderRadius:3,padding:'2px 0',fontFamily:FD,fontSize:12,color:c.col}}>⚡{c.cost}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:4}}>
+              {[1,2,3].map(i=><div key={i} style={{width:22,height:22,borderRadius:'50%',background:'linear-gradient(135deg,#ffaa33,#ff6600)',border:'2px solid #fff',boxShadow:'0 0 8px #ffaa3388'}}/>)}
+            </div>
+            <div style={{fontFamily:FD,fontSize:11,color:'#ffaa33',letterSpacing:2}}>3 ENERGY PER TURN</div>
+          </div>
+        ),
+        desc:'You start each turn with 3 energy. Cards cost ⚡ to play. A cost-1 card fits anywhere; a cost-3 card may span the whole page. Blood cards cost HP instead of energy. High risk, high reward.',
+      },
+      {
+        title:'Card Types & Keywords',
+        visual:(
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,justifyContent:'center',maxWidth:320}}>
+            {[['⚔️ Attack','#ff4455','Deal damage'],['🛡️ Defend','#4499ff','Gain Block'],['✨ Magic','#bb55ff','Channel power'],['☠️ Poison','#44dd66','Corrode enemies'],['🔥 Rage','#ff7722','Blood-fuelled strikes'],['💚 Heal','#22ccaa','Restore HP']].map(([name,col,tip])=>(
+              <div key={name} style={{background:`${col}14`,border:`1px solid ${col}44`,borderRadius:6,padding:'6px 10px',textAlign:'center',minWidth:88}}>
+                <div style={{fontFamily:FD,fontSize:11,color:col}}>{name}</div>
+                <div style={{fontFamily:FB,fontSize:9,color:'#555',marginTop:2}}>{tip}</div>
+              </div>
+            ))}
+          </div>
+        ),
+        desc:'Cards come in six types. Keywords add special behaviour: COMBO chains bonus damage, CHANNEL holds magic until turn end (pierces block), MOMENTUM rewards playing many cards in a row, CORRODE stacks poison permanently.',
+      },
+      {
+        title:'Momentum',
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {[1,2,3].map(i=>(
+                <div key={i} style={{width:36,height:36,borderRadius:'50%',background:i<=2?'#33ddff33':'linear-gradient(135deg,#33ddff,#0088cc)',border:`2px solid ${i<=2?'#33ddff55':'#33ddff'}`,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:FD,fontSize:16,color:i<=2?'#33ddff88':'#fff',boxShadow:i===3?'0 0 16px #33ddff88':undefined}}>
+                  {i}
+                </div>
+              ))}
+              <div style={{fontFamily:FD,fontSize:20,color:'#33ddff',marginLeft:4}}>→</div>
+              <div style={{background:'#33ddff22',border:'2px solid #33ddff',borderRadius:6,padding:'6px 12px',fontFamily:FD,fontSize:12,color:'#33ddff',letterSpacing:1}}>FREE CARD</div>
+            </div>
+            <div style={{fontFamily:FB,fontSize:10,color:'#555',letterSpacing:2,textAlign:'center'}}>PLAY 3 MOMENTUM CARDS → NEXT IS FREE</div>
+          </div>
+        ),
+        desc:'Cards with the MOMENTUM keyword build a counter. At 3 stacks, your next card costs zero energy. Chain momentum cards to play more cards than your energy allows. Speed stat increases how many cards you draw each turn.',
+      },
+      {
+        title:'The Map & Progression',
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
+            <div style={{display:'flex',gap:12,alignItems:'center'}}>
+              {[['⚔️','Battle','#ff4455'],['💀','Elite','#ff3366'],['🏕️','Rest','#44dd66'],['🛒','Shop','#ffd700'],['👑','Boss','#ffd700']].map(([icon,label,col])=>(
+                <div key={label} style={{textAlign:'center'}}>
+                  <div style={{fontSize:22,marginBottom:2}}>{icon}</div>
+                  <div style={{fontFamily:FB,fontSize:9,color:col,letterSpacing:1}}>{label.toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{width:200,height:1,background:'linear-gradient(90deg,transparent,#ffaa3344,transparent)',margin:'4px 0'}}/>
+            <div style={{fontFamily:FB,fontSize:10,color:'#555',textAlign:'center',maxWidth:260}}>Choose your path through each floor</div>
+          </div>
+        ),
+        desc:'The City is a branching map. Battles give gold and unlock superpowers. Elites are tough but drop rare Amps. Rest sites heal HP. Shops let you buy cards and relics. Each floor ends in a Boss.',
+      },
+      {
+        title:'Attributes & Growth',
+        visual:(
+          <div style={{display:'flex',flexWrap:'wrap',gap:5,justifyContent:'center',maxWidth:300}}>
+            {ATTR_INFO.map(({key,icon,color})=>(
+              <div key={key} style={{background:`${color}14`,border:`1px solid ${color}33`,borderRadius:6,padding:'5px 10px',display:'flex',alignItems:'center',gap:5}}>
+                <span style={{fontSize:14}}>{icon}</span>
+                <span style={{fontFamily:FD,fontSize:10,color}}>{key.toUpperCase()}</span>
+              </div>
+            ))}
+          </div>
+        ),
+        desc:'After every victory, earn 8 attribute points. Spend them to grow your stats. Strength boosts attack, Magic amplifies spells, Speed draws more cards, Vitality adds max HP, and more. Your build is yours to shape.',
+      },
+      {
+        title:"You're Ready",
+        visual:(
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
+            <div style={{fontSize:64,animation:'float 3s ease-in-out infinite'}}>⚡</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',maxWidth:280}}>
+              {['Place','Resolve','Evolve'].map(w=>(
+                <div key={w} style={{fontFamily:FD,fontSize:16,color:'#ffaa33',padding:'4px 14px',border:'1px solid #ffaa3344',borderRadius:3,letterSpacing:3}}>{w.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+        ),
+        desc:'That is everything you need to know. The rest you will learn by doing. Trust your instincts, build your deck, and take back the City. Potential Man has no limits. Only the ones you accept.',
+      },
+    ];
+    const step=TUT_STEPS[tutStep];
+    const isLast=tutStep===TUT_STEPS.length-1;
+    const isFirst=tutStep===0;
+    return (
+      <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative',padding:20,boxSizing:'border-box'}}>
+        <style>{CSS}</style>
+        <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 80% 60% at 50% 40%,#1a0840 0%,#060110 55%,#000 100%)',pointerEvents:'none'}}/>
+        <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff06 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
+
+        {/* progress dots */}
+        <div style={{position:'relative',zIndex:1,display:'flex',gap:6,marginBottom:24}}>
+          {TUT_STEPS.map((_,i)=>(
+            <div key={i} onClick={()=>setTutStep(i)} style={{width:i===tutStep?20:6,height:6,borderRadius:3,background:i===tutStep?'#ffaa33':i<tutStep?'#ffaa3366':'#333',transition:'all 0.3s',cursor:'pointer'}}/>
+          ))}
+        </div>
+
+        {/* card */}
+        <div key={tutStep} style={{position:'relative',zIndex:1,background:'#0d0820',border:'1px solid #ffaa3322',borderRadius:12,padding:'28px 32px',maxWidth:480,width:'100%',boxSizing:'border-box',boxShadow:'0 0 60px #ffaa3308',animation:'fadeUp 0.3s ease both',textAlign:'center'}}>
+          {/* step label */}
+          <div style={{fontFamily:FB,fontSize:10,color:'#ffaa3355',letterSpacing:4,textTransform:'uppercase',marginBottom:10}}>
+            Step {tutStep+1} of {TUT_STEPS.length}
+          </div>
+
+          {/* title */}
+          <div style={{fontFamily:FD,fontSize:22,color:'#fff',letterSpacing:2,marginBottom:20,textShadow:'0 0 20px #ffaa3344'}}>
+            {step.title}
+          </div>
+
+          {/* visual */}
+          <div style={{minHeight:160,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:20,background:'#ffffff04',borderRadius:8,padding:16,border:'1px solid #ffffff08'}}>
+            {step.visual}
+          </div>
+
+          {/* description */}
+          <div style={{fontFamily:FB,fontSize:13,color:'#999',lineHeight:1.75,marginBottom:24}}>
+            {step.desc}
+          </div>
+
+          {/* nav buttons */}
+          <div style={{display:'flex',gap:10,justifyContent:'center',alignItems:'center'}}>
+            {!isFirst&&(
+              <button onClick={()=>setTutStep(p=>p-1)} style={{fontFamily:FD,fontSize:13,padding:'9px 22px',background:'transparent',border:'1px solid #ffaa3333',borderRadius:3,color:'#ffaa3377',cursor:'pointer',letterSpacing:3}}>
+                ← BACK
+              </button>
+            )}
+            {!isLast&&(
+              <button onClick={()=>setTutStep(p=>p+1)} style={{fontFamily:FD,fontSize:15,padding:'11px 36px',background:'linear-gradient(135deg,#ff9900,#ff4400)',border:'none',borderRadius:3,color:'#fff',cursor:'pointer',letterSpacing:4,boxShadow:'0 0 28px #ff660033,0 4px 0 #882200'}}>
+                NEXT →
+              </button>
+            )}
+            {isLast&&(
+              <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:15,padding:'11px 36px',background:'linear-gradient(135deg,#ff9900,#ff4400)',border:'none',borderRadius:3,color:'#fff',cursor:'pointer',letterSpacing:3,boxShadow:'0 0 28px #ff660033,0 4px 0 #882200'}}>
+                BACK TO MENU
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* skip link */}
+        <div style={{position:'relative',zIndex:1,marginTop:16}}>
+          <button onClick={()=>setScreen('title')} style={{fontFamily:FB,fontSize:11,color:'#333',background:'none',border:'none',cursor:'pointer',letterSpacing:2,textDecoration:'underline'}}>
+            skip tutorial
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if(screen==='gameOver')return (
     <div style={{minHeight:'100vh',background:'#02000a',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
