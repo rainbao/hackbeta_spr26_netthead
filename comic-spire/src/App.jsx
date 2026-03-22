@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
+import { createAudioSystem } from "./audio";
 
 /* ═══════════════════════════════════════════════════════
    COMIC SPIRE v9 — POTENTIAL MAN
@@ -848,10 +849,13 @@ export default function ComicSpire(){
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
   const prevQueuedPagesRef=useRef(0);
+  const loadedSlateRef=useRef(new Set());
+  const[slateReadyTick,setSlateReadyTick]=useState(0);
   const mapScrollRef=useRef(null);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
   const[alignNotif,setAlignNotif]=useState(null);
+  const audio=useMemo(()=>createAudioSystem(),[]);
   // Clear tooltip and floaters on any screen change
   useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
   // Cutscene: scroll to reachable nodes (bottom of column-reverse map) whenever map opens
@@ -860,6 +864,24 @@ export default function ComicSpire(){
       setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),350);
     }
   },[screen]);
+
+  // Preload slate overlay assets so flash renders reliably on first use
+  useEffect(()=>{
+    const variants=['Bubble','Brutal','Action'];
+    for(let p=1;p<=4;p++){
+      variants.forEach(v=>{
+        const key=`${v}_${p}`;
+        const img=new Image();
+        img.onload=()=>{
+          if(!loadedSlateRef.current.has(key)){
+            loadedSlateRef.current.add(key);
+            setSlateReadyTick(t=>t+1);
+          }
+        };
+        img.src=`/assets/${v}_Comic_Slate_${p}.png`;
+      });
+    }
+  },[]);
 
   // Alignment tier change notification
   useEffect(()=>{
@@ -882,6 +904,7 @@ export default function ComicSpire(){
   },[player?.hp]);
   const hasR=useCallback(fx=>relics.some(r=>r.fx===fx),[relics]);
   const applyRelic=useCallback(r=>{setRelics(p=>[...p,r]);if(r.fx==='hpUp')setPlayer(p=>({...p,maxHp:p.maxHp+8,hp:p.hp+8}));if(r.fx==='enUp')setMaxEnergy(p=>Math.min(5,p+1));},[]);
+  useEffect(()=>()=>audio.stopBgm(),[audio]);
 
   useEffect(()=>{if(battle.victory&&screen==='battle'){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
@@ -923,12 +946,14 @@ export default function ComicSpire(){
   },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake]);
 
   const startGame=useCallback(()=>{
+    audio.unlock();
+    audio.startBgm();
     setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,speed:55,def:2});
     setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
     setPotLv(1);setCopiedAbilities([]);setRelics([]);
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
     setMapLog(['Choose a path. Branches lock in for 3 floors.']);setScreen('map');
-  },[]);
+  },[audio]);
 
   const commitBattle=useCallback(()=>{if(!pendingBattle)return;const{nodeId,en}=pendingBattle;const[f]=nodeId.split('-').map(Number);
     setHexMap(prev=>prev.map((row,fi)=>fi===f?row.map(n=>n.id===nodeId?{...n,visited:true}:n):row));
@@ -937,9 +962,11 @@ export default function ComicSpire(){
   },[pendingBattle,hexMap,deck,maxEnergy,relics]);
 
   const placeCard=useCallback((card,r,c)=>{
+    audio.unlock();
+    audio.playPlace(card.keyword);
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
-  },[relics,player]);
+  },[audio,relics,player]);
 
   const endTurn=useCallback(()=>{
     if(battle.phase!=='player')return;setAnimPhase('r');
@@ -1270,7 +1297,12 @@ export default function ComicSpire(){
           const{cards,variant}=slatePreview;
           const previewCards=(cards||[]).slice(0,4);
           const panelCount=clamp(previewCards.length,1,4);
-          const slateImg=`/assets/${variant}_Comic_Slate_${panelCount}.png`;
+          const preferredKey=`${variant}_${panelCount}`;
+          const fallbackVariant=loadedSlateRef.current.has(preferredKey)?variant:
+            loadedSlateRef.current.has(`Bubble_${panelCount}`)?'Bubble':
+            loadedSlateRef.current.has(`Brutal_${panelCount}`)?'Brutal':'Action';
+          const slateImg=`/assets/${fallbackVariant}_Comic_Slate_${panelCount}.png`;
+          const glow=variant==='Action'?'#ff5533aa':variant==='Brutal'?'#ff2255aa':'#44aaffaa';
           const FLASH={attack:{c:'#ff2244',label:'ATTACK!'},magic:{c:'#aa33ff',label:'MAGIC!'},defend:{c:'#2266ff',label:'DEFEND!'},poison:{c:'#22cc44',label:'POISON!'},rage:{c:'#ff5500',label:'RAGE!'},heal:{c:'#22ccaa',label:'HEAL!'},draw:{c:'#11ccff',label:'DRAW!'}};
           const sortedCards=[...previewCards].sort((a,b)=>((a.row??0)*COLS+(a.col??0))-((b.row??0)*COLS+(b.col??0)));
           const rowBuckets=[[],[]],colBuckets=[[],[]];
@@ -1332,7 +1364,7 @@ export default function ComicSpire(){
             sortedCards.forEach((card,idx)=>slots.push({card,style:cellMap[idx]}));
           }
           return <div style={{position:'fixed',inset:0,background:'#000d',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
-            <div style={{position:'relative',width:290,height:390}}>
+            <div style={{position:'relative',width:290,height:390,borderRadius:10,boxShadow:`0 0 24px ${glow}, 0 0 48px ${glow}`}}>
               <div style={{position:'absolute',inset:0}}>
                 {slots.map((slot,i)=>{
                   const card=slot.card;
@@ -1343,7 +1375,7 @@ export default function ComicSpire(){
                   </div>;
                 })}
               </div>
-              <img src={slateImg} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',pointerEvents:'none'}}/>
+              <img key={`${slateImg}-${slateReadyTick}`} src={slateImg} loading="eager" decoding="sync" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',pointerEvents:'none'}}/>
             </div>
           </div>;
         })()}
@@ -1474,7 +1506,7 @@ export default function ComicSpire(){
             {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} — click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
-            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
+            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>{const nextId=card.id===selectedCardId?null:card.id;if(nextId){audio.unlock();audio.playSelect();}setSelectedCardId(nextId);}} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
           </div>
         </div>
         <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center'}}>
