@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
+import { createAudioSystem } from "./audio";
 
 /* ═══════════════════════════════════════════════════════
    COMIC SPIRE v9 — POTENTIAL MAN
@@ -830,10 +831,14 @@ export default function ComicSpire(){
   const[damageFlash,setDamageFlash]=useState(false);
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
+  const prevQueuedPagesRef=useRef(0);
+  const loadedSlateRef=useRef(new Set());
+  const[slateReadyTick,setSlateReadyTick]=useState(0);
   const mapScrollRef=useRef(null);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
   const[alignNotif,setAlignNotif]=useState(null);
+  const audio=useMemo(()=>createAudioSystem(),[]);
   // Clear tooltip and floaters on any screen change
   useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
   // Cutscene: scroll to reachable nodes (bottom of column-reverse map) whenever map opens
@@ -842,6 +847,24 @@ export default function ComicSpire(){
       setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),350);
     }
   },[screen]);
+
+  // Preload slate overlay assets so flash renders reliably on first use
+  useEffect(()=>{
+    const variants=['Bubble','Brutal','Action'];
+    for(let p=1;p<=4;p++){
+      variants.forEach(v=>{
+        const key=`${v}_${p}`;
+        const img=new Image();
+        img.onload=()=>{
+          if(!loadedSlateRef.current.has(key)){
+            loadedSlateRef.current.add(key);
+            setSlateReadyTick(t=>t+1);
+          }
+        };
+        img.src=`/assets/${v}_Comic_Slate_${p}.png`;
+      });
+    }
+  },[]);
 
   // Alignment tier change notification
   useEffect(()=>{
@@ -864,6 +887,7 @@ export default function ComicSpire(){
   },[player?.hp]);
   const hasR=useCallback(fx=>relics.some(r=>r.fx===fx),[relics]);
   const applyRelic=useCallback(r=>{setRelics(p=>[...p,r]);if(r.fx==='hpUp')setPlayer(p=>({...p,maxHp:p.maxHp+8,hp:p.hp+8}));if(r.fx==='enUp')setMaxEnergy(p=>Math.min(5,p+1));},[]);
+  useEffect(()=>()=>audio.stopBgm(),[audio]);
 
   useEffect(()=>{if(battle.victory&&screen==='battle'){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
@@ -875,6 +899,33 @@ export default function ComicSpire(){
     setRewardCards(en.deck||[en.signature]);
     setTimeout(()=>setScreen('battleWin'),500);}},[battle.victory]);
   useEffect(()=>{if(battle.defeat&&screen==='battle')setTimeout(()=>setScreen('gameOver'),600);},[battle.defeat]);
+
+  useEffect(()=>{
+    const currQueued=battle.queuedPages.length;
+    const prevQueued=prevQueuedPagesRef.current;
+
+    if(screen!=='battle'){
+      prevQueuedPagesRef.current=currQueued;
+      return;
+    }
+
+    if(battle.phase==='player'&&currQueued>prevQueued){
+      const page=battle.queuedPages[currQueued-1];
+      const cardData=(page?.cards||[]).slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
+      if(cardData.length>0){
+        const slateVariant=pick(['Bubble','Brutal','Action']);
+        setSlatePreview({cards:cardData,variant:slateVariant});
+        setTimeout(()=>setSlatePreview(null),900);
+      }
+    }
+
+    if(battle.phase==='player'&&currQueued>0){
+      dispatch({type:'RESOLVE_NEXT_PAGE',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p)});
+      doShake();
+    }
+
+    prevQueuedPagesRef.current=battle.queuedPages.length;
+  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake]);
 
   const startGame=useCallback(()=>{
     setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,def:2,Power:40,Strength:40,Magic:40,Intelligence:40,Speed:40,Defense:40,Poison:40,Rage:40,attrs:{Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0}});
@@ -907,7 +958,7 @@ export default function ComicSpire(){
   const placeCard=useCallback((card,r,c)=>{
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
-  },[relics,player]);
+  },[audio,relics,player]);
 
   const endTurn=useCallback(()=>{
     if(battle.phase!=='player')return;setAnimPhase('r');
@@ -930,8 +981,8 @@ export default function ComicSpire(){
     if(finalPages.length>0){
       // Build slate preview: one entry per actual card placed (up to 4)
       const allCards=finalPages.flatMap(pg=>pg.cards||[]);
-      const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon}));
-      const slateVariant=evilness>=60?'Brutal':'Bubble';
+      const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
+      const slateVariant=pick(['Bubble','Brutal','Action']);
       setSlatePreview({cards:cardData,variant:slateVariant});
       setTimeout(()=>setSlatePreview(null),1500);
     }
@@ -994,7 +1045,7 @@ export default function ComicSpire(){
   const showTip=useCallback((info)=>{setTooltip(info);setTimeout(()=>setTooltip(p=>p===info?null:p),3000);},[]);
   const KW=({k})=>{if(!k)return null;const info=KW_INFO[k];if(!info)return null;
     return <span onClick={(e)=>{e.stopPropagation();showTip(info);}} onMouseEnter={()=>showTip(info)} onMouseLeave={()=>setTooltip(null)}
-      style={{fontSize:9,padding:'1px 4px',borderRadius:2,background:`${info.color}22`,color:info.color,border:`1px solid ${info.color}44`,fontFamily:FD,letterSpacing:0.5,cursor:'help'}}>{info.name}</span>;};
+      style={{fontSize:9,padding:'0.5px 4px',lineHeight:1,borderRadius:2,background:`${info.color}22`,color:info.color,border:`1px solid ${info.color}44`,fontFamily:FD,letterSpacing:0.5,cursor:'help'}}>{info.name}</span>;};
 
   const HpBar=({hp,max,color,h=13})=> <div style={{position:'relative',height:h,background:'#1a1a2a',borderRadius:h/2,overflow:'hidden',border:'1px solid #333',minWidth:80}}><div style={{height:'100%',width:`${clamp(hp/max*100,0,100)}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:h/2,transition:'width 0.4s'}}/><div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:h*0.6,fontFamily:FB,fontWeight:700,color:'#fff',textShadow:'0 1px 2px #000'}}>{hp}/{max}</div></div>;
 
@@ -1018,7 +1069,8 @@ export default function ComicSpire(){
       </div>
       <div style={{height:28,display:'flex',alignItems:'center',justifyContent:'center',background:`radial-gradient(circle,${card.color}15,transparent)`,fontSize:20}}>{card.icon}</div>
       <div style={{padding:'3px 6px',flex:1}}>
-        <div style={{fontFamily:FD,fontSize:10,color:'#fff',lineHeight:1.2,marginBottom:2,display:'flex',alignItems:'center',gap:2,flexWrap:'wrap'}}>{card.name} <KW k={card.keyword}/></div>
+        <div style={{fontFamily:FD,fontSize:10,color:'#fff',lineHeight:1.2,marginBottom:2}}>{card.name}</div>
+        <div style={{display:'flex', justifyContent:'center',marginBottom:2}}><KW k={card.keyword}/></div>
         <div style={{fontFamily:FB,fontSize:10,color:'#aaa',lineHeight:1.3}}>{card.desc}</div>
       </div>
       <div style={{padding:'2px 6px 4px',borderTop:'1px solid #ffffff06'}}>
@@ -1319,21 +1371,87 @@ export default function ComicSpire(){
         <style>{CSS}</style><TooltipOverlay/><AlignNotif/>
         {slatePreview!==null&&(()=>{
           const{cards,variant}=slatePreview;
-          const slateImg=`/assets/${variant}_Comic_Slate_4.png`;
+          const previewCards=(cards||[]).slice(0,4);
+          const panelCount=clamp(previewCards.length,1,4);
+          const preferredKey=`${variant}_${panelCount}`;
+          const fallbackVariant=loadedSlateRef.current.has(preferredKey)?variant:
+            loadedSlateRef.current.has(`Bubble_${panelCount}`)?'Bubble':
+            loadedSlateRef.current.has(`Brutal_${panelCount}`)?'Brutal':'Action';
+          const slateImg=`/assets/${fallbackVariant}_Comic_Slate_${panelCount}.png`;
+          const glow=variant==='Action'?'#ff5533aa':variant==='Brutal'?'#ff2255aa':'#44aaffaa';
           const FLASH={attack:{c:'#ff2244',label:'ATTACK!'},magic:{c:'#aa33ff',label:'MAGIC!'},defend:{c:'#2266ff',label:'DEFEND!'},poison:{c:'#22cc44',label:'POISON!'},rage:{c:'#ff5500',label:'RAGE!'},heal:{c:'#22ccaa',label:'HEAL!'},draw:{c:'#11ccff',label:'DRAW!'}};
-          const panels=Array(4).fill(null).map((_,i)=>cards[i]||null);
+          const sortedCards=[...previewCards].sort((a,b)=>((a.row??0)*COLS+(a.col??0))-((b.row??0)*COLS+(b.col??0)));
+          const rowBuckets=[[],[]],colBuckets=[[],[]];
+          sortedCards.forEach(c=>{
+            const rr=clamp(c.row??0,0,1),cc=clamp(c.col??0,0,1);
+            rowBuckets[rr].push(c);colBuckets[cc].push(c);
+          });
+          const half='49%';
+          const slots=[];
+          if(sortedCards.length===1){
+            slots.push({card:sortedCards[0],style:{top:0,left:0,width:'100%',height:'100%'}});
+          }else if(sortedCards.length===2){
+            const verticalPair=[...sortedCards].sort((x,y)=>(x.row??0)-(y.row??0));
+            slots.push({card:verticalPair[0],style:{top:0,left:0,width:'100%',height:half}});
+            slots.push({card:verticalPair[1],style:{top:'51%',left:0,width:'100%',height:half}});
+          }else if(sortedCards.length===3){
+            const topCount=rowBuckets[0].length,bottomCount=rowBuckets[1].length;
+            const leftCount=colBuckets[0].length,rightCount=colBuckets[1].length;
+            if(topCount===2||bottomCount===2){
+              const twoRow=topCount===2?0:1;
+              const singleRow=twoRow===0?1:0;
+              const two=rowBuckets[twoRow].sort((x,y)=>(x.col??0)-(y.col??0));
+              const one=rowBuckets[singleRow][0];
+              if(twoRow===0){
+                slots.push({card:two[0],style:{top:0,left:0,width:half,height:half}});
+                slots.push({card:two[1],style:{top:0,left:'51%',width:half,height:half}});
+                slots.push({card:one,style:{top:'51%',left:0,width:'100%',height:half}});
+              }else{
+                slots.push({card:one,style:{top:0,left:0,width:'100%',height:half}});
+                slots.push({card:two[0],style:{top:'51%',left:0,width:half,height:half}});
+                slots.push({card:two[1],style:{top:'51%',left:'51%',width:half,height:half}});
+              }
+            }else if(leftCount===2||rightCount===2){
+              const twoCol=leftCount===2?0:1;
+              const singleCol=twoCol===0?1:0;
+              const two=colBuckets[twoCol].sort((x,y)=>(x.row??0)-(y.row??0));
+              const one=colBuckets[singleCol][0];
+              if(twoCol===0){
+                slots.push({card:two[0],style:{top:0,left:0,width:half,height:half}});
+                slots.push({card:two[1],style:{top:'51%',left:0,width:half,height:half}});
+                slots.push({card:one,style:{top:0,left:'51%',width:half,height:'100%'}});
+              }else{
+                slots.push({card:one,style:{top:0,left:0,width:half,height:'100%'}});
+                slots.push({card:two[0],style:{top:0,left:'51%',width:half,height:half}});
+                slots.push({card:two[1],style:{top:'51%',left:'51%',width:half,height:half}});
+              }
+            }else{
+              slots.push({card:sortedCards[0],style:{top:0,left:0,width:half,height:half}});
+              slots.push({card:sortedCards[1],style:{top:0,left:'51%',width:half,height:half}});
+              slots.push({card:sortedCards[2],style:{top:'51%',left:0,width:'100%',height:half}});
+            }
+          }else{
+            const cellMap=[
+              {top:0,left:0,width:half,height:half},
+              {top:0,left:'51%',width:half,height:half},
+              {top:'51%',left:0,width:half,height:half},
+              {top:'51%',left:'51%',width:half,height:half},
+            ];
+            sortedCards.forEach((card,idx)=>slots.push({card,style:cellMap[idx]}));
+          }
           return <div style={{position:'fixed',inset:0,background:'#000d',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
-            <div style={{position:'relative',width:290,height:390}}>
-              <div style={{position:'absolute',top:'3%',left:'4%',width:'92%',height:'93%',display:'grid',gridTemplateColumns:'1fr 1fr',gridTemplateRows:'1fr 1fr',gap:'2%'}}>
-                {panels.map((card,i)=>{
+            <div style={{position:'relative',width:290,height:390,borderRadius:10,boxShadow:`0 0 24px ${glow}, 0 0 48px ${glow}`}}>
+              <div style={{position:'absolute',inset:0}}>
+                {slots.map((slot,i)=>{
+                  const card=slot.card;
                   const cfg=card?(FLASH[card.type]||FLASH.attack):{c:'#111',label:''};
-                  return <div key={i} style={{background:cfg.c,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,overflow:'hidden'}}>
+                  return <div key={i} style={{position:'absolute',...slot.style,background:cfg.c,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,overflow:'hidden'}}>
                     {card&&<><span style={{fontSize:36,lineHeight:1,filter:'drop-shadow(0 2px 8px #0009)'}}>{card.icon||'⚡'}</span>
                     <span style={{fontFamily:FD,fontSize:11,color:'#fff',letterSpacing:2,textShadow:'0 0 8px #000,0 2px 3px #000',fontWeight:700}}>{cfg.label}</span></>}
                   </div>;
                 })}
               </div>
-              <img src={slateImg} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',pointerEvents:'none'}}/>
+              <img key={`${slateImg}-${slateReadyTick}`} src={slateImg} loading="eager" decoding="sync" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',pointerEvents:'none'}}/>
             </div>
           </div>;
         })()}
@@ -1464,7 +1582,7 @@ export default function ComicSpire(){
             {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} — click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
-            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
+            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>{const nextId=card.id===selectedCardId?null:card.id;if(nextId){audio.unlock();audio.playSelect();}setSelectedCardId(nextId);}} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
           </div>
         </div>
         <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center'}}>
@@ -1524,8 +1642,7 @@ export default function ComicSpire(){
                 const taken=absorbedCardIds.includes(c.id);
                 const isSel=selectedAbsorbCard?.id===c.id;
                 const isSig=i===0;
-                return <div key={c.id} style={{position:'relative',opacity:taken?0.3:1,transition:'opacity 0.3s'}}>
-                  {isSig&&!taken&&<div style={{position:'absolute',top:-8,left:'50%',transform:'translateX(-50%)',fontFamily:FD,fontSize:6,color:'#ffd700',background:'#000',padding:'0 4px',borderRadius:2,border:'1px solid #ffd70044',zIndex:1,whiteSpace:'nowrap'}}>SIGNATURE</div>}
+                return <div key={c.id} style={{position:'relative',width:'max-content',justifySelf:'center',opacity:taken?0.3:1,transition:'opacity 0.3s',borderRadius:8,boxShadow:isSig&&!taken?'0 0 0 2px #ffd700aa, 0 0 16px #ffd70088':'none'}}>
                   {taken&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2,fontFamily:FD,fontSize:20,pointerEvents:'none'}}>✓</div>}
                   <Card card={c} sel={isSel} dis={taken} onClick={taken?undefined:()=>setSelectedAbsorbCard(isSel?null:c)}/>
                 </div>;})}
