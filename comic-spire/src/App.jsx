@@ -2125,7 +2125,7 @@ export default function ComicSpire(){
             <div style={{fontFamily:FB,fontSize:10,color:'#555',letterSpacing:2}}>2 × 2 COMIC PAGE</div>
           </div>
         ),
-        desc:'Each turn you arrange cards on a 2×2 comic panel grid. Small cards (cost 1) fill one panel. Larger cards span multiple panels. When you hit END TURN, all cards resolve.',
+        desc:'Each turn you arrange cards on a 2×2 comic panel grid. Each time you fill a page, you play it. When you hit END TURN, all cards resolve.',
       },
       {
         title:'Reading Order Resolution',
@@ -2166,7 +2166,7 @@ export default function ComicSpire(){
             <div style={{fontFamily:FD,fontSize:11,color:'#ffaa33',letterSpacing:2}}>3 ENERGY PER TURN</div>
           </div>
         ),
-        desc:'You start each turn with 3 energy. Cards cost ⚡ to play. A cost-1 card fits anywhere; a cost-3 card may span the whole page. Blood cards cost HP instead of energy. High risk, high reward.',
+        desc:'You start each turn with 3 energy. Cards cost ⚡ to play. Blood cards cost HP instead of energy. High risk, high reward.',
       },
       {
         title:'Card Types & Keywords',
