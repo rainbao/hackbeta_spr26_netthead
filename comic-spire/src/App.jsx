@@ -842,7 +842,7 @@ export default function ComicSpire(){
   const[damageFlash,setDamageFlash]=useState(false);
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
-  const prevScreenRef=useRef('title');
+  const prevScreenRef=useRef(null);
   const prevMusicAlignRef=useRef(alignment);
   const prevQueuedPagesRef=useRef(0);
   const prevTurnAudioRef=useRef(null);
@@ -1301,7 +1301,7 @@ export default function ComicSpire(){
 
   // ═══ TITLE ═══
   if(screen==='title')return (
-    <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
+    <div onPointerDown={()=>{audio.unlock();audio.playMenuBgm(alignment);}} style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
       <style>{CSS}</style><DebugPanel/>
       {/* deep radial atmosphere */}
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 90% 70% at 50% 45%,#200840 0%,#0a0118 55%,#000 100%)',pointerEvents:'none'}}/>
@@ -1373,12 +1373,65 @@ export default function ComicSpire(){
             color:'#ffaa3388',cursor:'pointer',letterSpacing:4,textTransform:'uppercase'}}>
             TUTORIAL
           </button>
+          <button onClick={()=>setScreen('credits')} style={{fontFamily:FD,fontSize:11,padding:'7px 32px',
+            background:'transparent',border:'none',borderRadius:3,
+            color:'#ffffff22',cursor:'pointer',letterSpacing:4,textTransform:'uppercase'}}>
+            CREDITS
+          </button>
         </div>
 
         {/* version footer */}
         <div style={{marginTop:28,fontFamily:FB,fontSize:10,color:'#333',letterSpacing:3,animation:'fadeUp 0.5s 0.6s ease both',opacity:0}}>
           v0.9-alpha
         </div>
+      </div>
+    </div>);
+
+  // ═══ CREDITS ═══
+  if(screen==='credits')return (
+    <div style={{height:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',position:'relative',padding:'16px 20px',boxSizing:'border-box'}}>
+      <style>{CSS}</style>
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 80% 60% at 50% 40%,#1a0840 0%,#060110 55%,#000 100%)',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff06 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
+
+      <div style={{position:'relative',zIndex:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',maxWidth:480,width:'100%',gap:0}}>
+
+        {/* title */}
+        <div style={{fontFamily:FB,fontSize:10,letterSpacing:8,color:'#ffaa3366',marginBottom:6,textTransform:'uppercase',animation:'fadeUp 0.4s ease both'}}>Potential Man</div>
+        <div style={{fontSize:'clamp(22px,5vw,36px)',fontFamily:FD,letterSpacing:6,color:'#ffd700',
+          textShadow:'0 0 20px #ff880066, 2px 3px 0 #000',
+          animation:'fadeUp 0.4s 0.05s ease both',marginBottom:14}}>
+          CREDITS
+        </div>
+
+        {/* divider */}
+        <div style={{width:180,height:1,background:'linear-gradient(90deg,transparent,#ffaa3344,transparent)',marginBottom:14,animation:'fadeUp 0.4s 0.1s ease both',opacity:0}}/>
+
+        {/* credit entries */}
+        <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%',animation:'fadeUp 0.5s 0.15s ease both',opacity:0}}>
+          {[
+            {role:'Lead Composer & Sound Designer',name:'Matthew Nguyen',icon:'🎵',color:'#bb55ff'},
+            {role:'Project Development Leader',name:'Kaiden Johnson',icon:'⚡',color:'#ffaa33'},
+            {role:'Gameplay Playtesting & Balancing Leader',name:'Dylan Dexter',icon:'⚔️',color:'#ff4455'},
+            {role:'Lead Programmer & Software Engineer',name:'Andrew Nguyen',icon:'💻',color:'#33ddff'},
+          ].map(({role,name,icon,color})=>(
+            <div key={name} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',background:`${color}08`,border:`1px solid ${color}22`,borderRadius:6,textAlign:'left'}}>
+              <div style={{fontSize:20,flexShrink:0}}>{icon}</div>
+              <div>
+                <div style={{fontFamily:FB,fontSize:9,color:`${color}88`,letterSpacing:3,textTransform:'uppercase',marginBottom:2}}>{role}</div>
+                <div style={{fontFamily:FD,fontSize:16,color:'#fff',letterSpacing:2}}>{name}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* back button */}
+        <button onClick={()=>setScreen('title')} style={{marginTop:18,fontFamily:FD,fontSize:13,padding:'9px 40px',
+          background:'transparent',border:'1px solid #ffaa3333',borderRadius:3,
+          color:'#ffaa3377',cursor:'pointer',letterSpacing:4,textTransform:'uppercase',
+          animation:'fadeUp 0.4s 0.3s ease both',opacity:0}}>
+          BACK
+        </button>
       </div>
     </div>);
 
