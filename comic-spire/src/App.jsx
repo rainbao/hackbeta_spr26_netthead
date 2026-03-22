@@ -177,7 +177,7 @@ function getSignature(hero){
 function makeStarterDeck(){
   const mk=(nm,d,t,ic,v,kw='',cost=1)=>({id:uid(),name:nm,desc:d,type:t,icon:ic,value:v,cost,shape:'s1',panelSize:1,hits:1,debuff:0,keyword:kw,bloodCost:0,charge:false,heroName:'Potential Man',color:'#888',tier:0,copiedFrom:null,threat:0,bestStat:null,archetype:''});
   return[
-    mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),
+    mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),
     mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),
     mk('Spark','Deal 3 magic (30% pierces block)','magic','✨',3),mk('Spark','Deal 3 magic (30% pierces block)','magic','✨',3),
     mk('Adapt','Heal 4','heal','🔄',4),mk('Adapt','Heal 4','heal','🔄',4),
@@ -927,6 +927,18 @@ export default function ComicSpire(){
   const applyRelic=useCallback(r=>{setRelics(p=>[...p,r]);if(r.fx==='hpUp')setPlayer(p=>({...p,maxHp:p.maxHp+8,hp:p.hp+8}));if(r.fx==='enUp')setMaxEnergy(p=>Math.min(5,p+1));},[]);
   useEffect(()=>()=>audio.stopBgm(),[audio]);
 
+  // Start menu BGM on the very first user interaction (browser autoplay policy).
+  useEffect(()=>{
+    const onFirst=()=>{
+      audio.unlock();
+      audio.playMenuBgm(alignment);
+      window.removeEventListener('pointerdown',onFirst,true);
+    };
+    window.addEventListener('pointerdown',onFirst,true);
+    return()=>window.removeEventListener('pointerdown',onFirst,true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[audio]);
+
   useEffect(()=>{
     const enteredScreen=prevScreenRef.current!==screen;
     const alignChanged=prevMusicAlignRef.current!==alignment;
@@ -936,8 +948,8 @@ export default function ComicSpire(){
     }else if(screen==='victory'){
       // stop BGM so victory jingle plays cleanly without overlap
       if(enteredScreen){audio.playJingleBgm('victory',alignment);}
-    }else if(screen==='shop'){
-      // BGM already stopped by selectNode before playJingle; don't restart menu BGM here
+    }else if(screen==='shop'||screen==='openingCinematic'){
+      // shop: BGM handled by selectNode. cinematic: continue menu BGM from title screen.
     }else if(enteredScreen||alignChanged){
       audio.playMenuBgm(alignment);
     }
@@ -1009,9 +1021,8 @@ export default function ComicSpire(){
 
   const startGame=useCallback(()=>{
     audio.unlock();
-    audio.startBgm();
     setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,def:2,Power:40,Strength:40,Magic:40,Intelligence:40,Speed:40,Defense:40,Poison:40,Rage:40,attrs:{Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0}});
-    setDeck(makeStarterDeck());setGold(25);setEvilness(99);setMaxEnergy(3);
+    setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
     setPotLv(1);setNgPlus(0);setCopiedAbilities([]);setRelics([]);setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
     enemyCache.current={};
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
@@ -1301,7 +1312,7 @@ export default function ComicSpire(){
 
   // ═══ TITLE ═══
   if(screen==='title')return (
-    <div onPointerDown={()=>{audio.unlock();audio.playMenuBgm(alignment);}} style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
+    <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
       <style>{CSS}</style><DebugPanel/>
       {/* deep radial atmosphere */}
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 90% 70% at 50% 45%,#200840 0%,#0a0118 55%,#000 100%)',pointerEvents:'none'}}/>
@@ -2103,7 +2114,7 @@ export default function ComicSpire(){
             <div style={{fontFamily:FB,fontSize:10,color:'#555',letterSpacing:2}}>2 × 2 COMIC PAGE</div>
           </div>
         ),
-        desc:'Each turn you arrange cards on a 2×2 comic panel grid. Small cards (cost 1) fill one panel. Larger cards span multiple panels. When you hit END TURN, all cards resolve.',
+        desc:'Each turn you arrange cards on a 2×2 comic panel grid. When you hit END TURN, all cards resolve.',
       },
       {
         title:'Reading Order Resolution',
@@ -2144,7 +2155,7 @@ export default function ComicSpire(){
             <div style={{fontFamily:FD,fontSize:11,color:'#ffaa33',letterSpacing:2}}>3 ENERGY PER TURN</div>
           </div>
         ),
-        desc:'You start each turn with 3 energy. Cards cost ⚡ to play. A cost-1 card fits anywhere; a cost-3 card may span the whole page. Blood cards cost HP instead of energy. High risk, high reward.',
+        desc:'You start each turn with 3 energy. Cards cost ⚡ to play. Blood cards cost HP instead of energy. High risk, high reward.',
       },
       {
         title:'Card Types & Keywords',
@@ -2451,7 +2462,7 @@ export default function ComicSpire(){
             ⚡ ASCEND ({ngPlus+1}+)
             <div style={{fontSize:10,opacity:0.7,letterSpacing:1,marginTop:2}}>Keep build · +{Math.round((ngPlus+1)*35)}% enemy scaling</div>
           </button>}
-          <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:14,padding:'11px 40px',
+          <button onClick={startGame} style={{fontFamily:FD,fontSize:14,padding:'11px 40px',
             background:'transparent',border:'1px solid #ffd70044',borderRadius:3,
             color:'#ffd700aa',cursor:'pointer',letterSpacing:3}}>
             NEW RUN
