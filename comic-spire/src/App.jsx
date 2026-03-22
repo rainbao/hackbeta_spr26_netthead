@@ -361,7 +361,7 @@ const ALL_RELICS=[
   {id:'r4',name:'Mana Siphon',desc:'Channel heals 25%',icon:'💎',syn:'CHANNEL',fx:'chanHeal',alignBias:'hero'},
   {id:'r5',name:'Titanium Shell',desc:'Fortify 65%',icon:'🐢',syn:'FORTIFY',fx:'fortUp',alignBias:'hero'},
   {id:'r6',name:'Regenerator',desc:'+2 HP/turn',icon:'💗',syn:'FORTIFY',fx:'regen',alignBias:'hero'},
-  {id:'r7',name:'Lightning Boots',desc:'Free card at 2 cards played (instead of 3)',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
+  {id:'r7',name:'Lightning Boots',desc:'MOMENTUM surges at 3 stages (instead of 4)',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
   {id:'r8',name:'Afterimage',desc:'+2 Block/card',icon:'👤',syn:'MOMENTUM',fx:'cardBlk',alignBias:'any'},
   {id:'r9',name:'Plague Mask',desc:'All poison +2',icon:'🎭',syn:'CORRODE',fx:'poisUp',alignBias:'villain'},
   {id:'r10',name:'Blood Ruby',desc:'Blood costs 3',icon:'💎',syn:'BLOOD',fx:'bloodCheap',alignBias:'villain'},
@@ -566,9 +566,7 @@ function bReduce(state,action){
       const pRageAttr=(action.playerAttrs?.Rage||40)-40;
       if(card.keyword==='blood'){const rageCostReduce=Math.floor(pRageAttr/12);const cost=Math.max(1,(hasR('bloodCheap')?3:card.bloodCost)-rageCostReduce);if(action.playerHp<=cost)return s;action.payBlood(cost);}
       else if(card.keyword==='frenzy'){/* frenzy costs 0 energy */}
-      else{let ec=card.cost;const momT=hasR('momDown')?2:3;
-        if(s.momentum>=momT&&!s.momentumUsed){ec=0;s.momentumUsed=true;s.log=[...s.log,'⚡ MOMENTUM! Free!'];}
-        if(s.energy<ec)return s;s.energy-=ec;}
+      else{if(s.energy<card.cost)return s;s.energy-=card.cost;}
       // Place on grid using shape
       if(!canPlace(s.page,row,col,card))return s;
       s.page=doPlace(s.page,row,col,card,card.id);
@@ -590,8 +588,18 @@ function bReduce(state,action){
         s.log=[...s.log,`📚 Page ${s.queuedPages.length} saved (${pageCardCount} card${pageCardCount===1?'':'s'})`];
       }
 
-      // Only MOMENTUM-keyword cards build momentum
-      if(card.keyword==='momentum')s.momentum++;
+      // MOMENTUM cards advance stage meter; at threshold: +1 Energy and reset
+      if(card.keyword==='momentum'){
+        const momT=hasR('momDown')?3:4;
+        s.momentum++;
+        if(s.momentum>=momT){
+          s.momentum=0;
+          s.energy=Math.min(s.maxEnergy+1,s.energy+1);
+          s.log=[...s.log,`⚡ MOMENTUM SURGE! +1 Energy (${momT}/${momT})`];
+        }else{
+          s.log=[...s.log,`⚡ MOMENTUM ${s.momentum}/${momT}`];
+        }
+      }
       return s;}
 
     case 'END_TURN':{
@@ -668,7 +676,7 @@ function bReduce(state,action){
         switch(intentCard.intent){
           case 'attack':{
             let d=Math.max(1,(intentCard.intentVal-(en.weakened||0))-pDef);
-            const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;pHp=Math.max(0,pHp-d);
+            const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;if(d>0)pHp=Math.max(0,pHp-d);if(action.damageFn&&d>0)action.damageFn();
             s.log=[...s.log,`🔴 [${panelNum}] ${en.Name} ${cn}: ${d} dmg${bl>0?' ('+bl+' blk)':''}${pDef>0?` [−${pDef} def]`:''}`];break;}
           case 'magic':{let d=Math.max(1,intentCard.intentVal-Math.floor(pDef*0.5));const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(pBlk,b2);pBlk-=bl;d=p2+b2-bl;pHp=Math.max(0,pHp-d);
             s.log=[...s.log,`🟣 [${panelNum}] ${en.Name} ${cn}: ${d} magic${bl>0?` (${bl} blk, ${p2} pierced)`:''}`];break;}
@@ -832,6 +840,8 @@ export default function ComicSpire(){
   const[damageFlash,setDamageFlash]=useState(false);
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
+  const prevScreenRef=useRef('title');
+  const prevMusicAlignRef=useRef(alignment);
   const prevQueuedPagesRef=useRef(0);
   const prevTurnAudioRef=useRef(null);
   const loadedSlateRef=useRef(new Set());
@@ -898,7 +908,13 @@ export default function ComicSpire(){
   },[alignLabel]);
   const addFloat=useCallback((t,c,side='enemy')=>{const id=uid();setFloaters(p=>[...p,{id,text:t,color:c,x:side==='enemy'?60+Math.random()*24:6+Math.random()*24,y:18+Math.random()*22}]);setTimeout(()=>setFloaters(p=>p.filter(f=>f.id!==id)),1400);},[]);
   const doShake=useCallback(()=>{setShake(true);setTimeout(()=>setShake(false),350);},[]);
-  const healPlayer=useCallback(amt=>setPlayer(p=>p?{...p,hp:Math.min(p.maxHp,p.hp+amt)}:p),[]);
+  const healPlayer=useCallback((amt)=>{
+    const healAmt=Math.max(0,amt||0);
+    if(healAmt<=0)return;
+    audio.unlock();
+    audio.playPlace('echo');
+    setPlayer(p=>p?{...p,hp:Math.min(p.maxHp,p.hp+healAmt)}:p);
+  },[audio]);
   useEffect(()=>{
     const hp=player?.hp;
     if(hp==null){prevHpRef.current=hp;return;}
@@ -910,6 +926,25 @@ export default function ComicSpire(){
   useEffect(()=>()=>audio.stopBgm(),[audio]);
 
   useEffect(()=>{
+    const enteredScreen=prevScreenRef.current!==screen;
+    const alignChanged=prevMusicAlignRef.current!==alignment;
+
+    audio.unlock();
+    if(screen==='battle'){
+      if(enteredScreen)audio.playCombatBgm(alignment);
+    }else if(enteredScreen||alignChanged){
+      audio.playMenuBgm(alignment);
+    }
+
+    if(enteredScreen&&screen==='victory'){
+      audio.playJingle('victory',alignment);
+    }
+
+    prevScreenRef.current=screen;
+    prevMusicAlignRef.current=alignment;
+  },[screen,alignment,audio]);
+
+  useEffect(()=>{
     if(screen!=='battle'||battle.phase!=='player')return;
     if(battle.hand.length===0)return;
     if(prevTurnAudioRef.current===battle.turn)return;
@@ -917,6 +952,19 @@ export default function ComicSpire(){
     audio.unlock();
     audio.playDraw();
   },[screen,battle.phase,battle.turn,battle.hand.length,audio]);
+
+  useEffect(()=>{
+    const onButtonSelect=(ev)=>{
+      if(screen==='battle')return;
+      const target=ev.target;
+      if(!(target instanceof Element))return;
+      if(!target.closest('button'))return;
+      audio.unlock();
+      audio.playSelect();
+    };
+    document.addEventListener('pointerdown',onButtonSelect,true);
+    return ()=>document.removeEventListener('pointerdown',onButtonSelect,true);
+  },[screen,audio]);
 
   useEffect(()=>{if(battle.victory&&screen==='battle'){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
@@ -943,6 +991,8 @@ export default function ComicSpire(){
       const cardData=(page?.cards||[]).slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       if(cardData.length>0){
         const slateVariant=pick(['Bubble','Brutal','Action']);
+        audio.unlock();
+        audio.playPlace('charge');
         setSlatePreview({cards:cardData,variant:slateVariant});
         setTimeout(()=>setSlatePreview(null),900);
       }
@@ -954,7 +1004,7 @@ export default function ComicSpire(){
     }
 
     prevQueuedPagesRef.current=battle.queuedPages.length;
-  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake]);
+  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake,audio]);
 
   const startGame=useCallback(()=>{
     audio.unlock();
@@ -988,12 +1038,18 @@ export default function ComicSpire(){
 
   const placeCard=useCallback((card,r,c)=>{
     audio.unlock();
-    audio.playPlace(card.keyword, card.type);
+    if(card.keyword==='momentum'){
+      const stage=Math.min(4,(battle.momentum||0)+1);
+      audio.playMomentumStage(stage);
+    }else{
+      audio.playPlace(card.keyword, card.type);
+    }
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
-  },[audio,relics,player]);
+  },[audio,relics,player,battle]);
 
   const endTurn=useCallback(()=>{
+    audio.unlock();audio.playSelect();
     if(battle.phase!=='player')return;setAnimPhase('r');
     // Evilness shifts based on card keywords played this turn
     const allPlayedCards=[...battle.queuedPages.flatMap(p=>p.cards||[]),...battle.placedCards];
@@ -1016,20 +1072,23 @@ export default function ComicSpire(){
       const allCards=finalPages.flatMap(pg=>pg.cards||[]);
       const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       const slateVariant=pick(['Bubble','Brutal','Action']);
+      audio.unlock();
+      audio.playPlace('charge');
       setSlatePreview({cards:cardData,variant:slateVariant});
       setTimeout(()=>setSlatePreview(null),1500);
     }
     setTimeout(()=>{
       dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,playerDef:player?.def||2,
-        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
+        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer,damageFn:()=>{audio.unlock();audio.playPlace('', 'attack');}});
       doShake();setAnimPhase(null);
     },400);
-  },[battle,player,relics,doShake,healPlayer,evilness]);
+  },[battle,player,relics,doShake,healPlayer,evilness,audio]);
 
   const selectNode=useCallback(nodeId=>{
     if(!hexMap)return;const[f,i]=nodeId.split('-').map(Number);
     const[cf,ci]=(curNodeId||'0-0').split('-').map(Number);const cur=hexMap[cf]?.[ci];
     if(!cur?.conns?.includes(nodeId)&&f!==0)return;const node=hexMap[f][i];
+    audio.unlock();audio.playSelect();
     if(['battle','elite','boss'].includes(node.type)){
       if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus);
       setPendingBattle({nodeId,en:enemyCache.current[nodeId]});return;}
@@ -1043,6 +1102,7 @@ export default function ComicSpire(){
       setShopItems(shuffle(shopPool).slice(0,4).map(h=>{const s=getSignature(h);s.price=Math.floor(18+s.tier*12+s.value);return s;}));
       const alignedRelics=ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id)&&(r.alignBias==='any'||r.alignBias===al||!r.alignBias));
       setShopRelics(shuffle(alignedRelics.length>=2?alignedRelics:ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id))).slice(0,2).map(r=>({...r,price:r.syn==='any'?30:45})));
+      audio.playJingle('shop',al);
       setScreen('shop');}
     else if(node.type==='event'){
       const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
@@ -1056,8 +1116,8 @@ export default function ComicSpire(){
       else pool=[...neutralEvents,...heroEvents.slice(0,2),...villainEvents.slice(0,2)];
       setCurEvent(pick(pool));setScreen('event');
     }
-    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});}
-  },[hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus]);
+    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';audio.playJingle('rest',al);setRestPopup({hp:h});}
+  },[audio,hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus,evilness]);
 
   const handleEvent=useCallback(opt=>{
     const cp=deck.filter(c=>c.copiedFrom);
