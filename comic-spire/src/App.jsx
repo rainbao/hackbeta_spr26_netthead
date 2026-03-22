@@ -809,6 +809,7 @@ export default function ComicSpire(){
   const[hexMap,setHexMap]=useState(null);
   const[curFloor,setCurFloor]=useState(0);
   const[curNodeId,setCurNodeId]=useState(null);
+  const[hoverNodeId,setHoverNodeId]=useState(null);
   const[shopItems,setShopItems]=useState([]);
   const[shopRelics,setShopRelics]=useState([]);
   const[curEvent,setCurEvent]=useState(null);
@@ -850,8 +851,26 @@ export default function ComicSpire(){
   const[animPhase,setAnimPhase]=useState(null);
   const[alignNotif,setAlignNotif]=useState(null);
   const audio=useMemo(()=>createAudioSystem(),[]);
+  const hoveredPathSet=useMemo(()=>{
+    if(!hexMap||!hoverNodeId)return null;
+    const byId=new Map();
+    hexMap.forEach(row=>row.forEach(n=>byId.set(n.id,n)));
+    const seen=new Set([hoverNodeId]);
+    const stack=[hoverNodeId];
+    while(stack.length){
+      const id=stack.pop();
+      const node=byId.get(id);
+      (node?.conns||[]).forEach(nextId=>{
+        if(!seen.has(nextId)){
+          seen.add(nextId);
+          stack.push(nextId);
+        }
+      });
+    }
+    return seen;
+  },[hexMap,hoverNodeId]);
   // Clear tooltip and floaters on any screen change
-  useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
+  useEffect(()=>{setTooltip(null);setFloaters([]);if(screen!=='map')setHoverNodeId(null);},[screen]);
   // Cutscene: scroll to reachable nodes (bottom of column-reverse map) whenever map opens
   useEffect(()=>{
     if(screen==='map'){
@@ -1331,35 +1350,38 @@ export default function ComicSpire(){
         {hexMap?.map((fn,fi)=>{
           const[cf]=(curNodeId||'0-0').split('-').map(Number);
           const co=curNodeId?hexMap[cf]?.find(n=>n.id===curNodeId):null;
+          const hoverActive=!!hoverNodeId;
           const isMerge=fn.length===1&&fi>0&&fi<(hexMap?.length||1)-1&&fi!==13&&fi!==14;
           const nextFloor=hexMap[fi+1];
           // Connector strip: shows which nodes in the NEXT floor each current-floor node connects to
           const connectorRow=nextFloor&&<div key={`conn-${fi}`} style={{display:'flex',justifyContent:'center',gap:8,alignItems:'center',height:10,marginLeft:24}}>
             {nextFloor.map((nxt,ni)=>{
               const isCurPath=co?.conns?.includes(nxt.id);
+              const isHoverPath=hoverActive&&fn.some(n=>hoveredPathSet?.has(n.id)&&n.conns?.includes(nxt.id));
               const anyPath=fn.some(n=>n.conns?.includes(nxt.id));
               const nc=NC[nxt.type]||'#555';
               return <div key={ni} style={{width:50,height:6,borderRadius:3,
-                background:isCurPath?`${nc}cc`:anyPath?`${nc}22`:'#1a1a2a22',
-                boxShadow:isCurPath?`0 0 8px ${nc}88`:undefined,
+                background:isHoverPath?`${nc}dd`:isCurPath?`${nc}cc`:anyPath?`${nc}22`:'#1a1a2a22',
+                boxShadow:isHoverPath?`0 0 12px ${nc}aa`:isCurPath?`0 0 8px ${nc}88`:undefined,
                 transition:'background 0.3s',
               }}/>;
             })}
           </div>;
           const floorRow=<div key={fi} style={{display:'flex',justifyContent:'center',gap:8,alignItems:'center',marginBottom:3}}>
             <div style={{width:20,fontSize:10,color:isMerge?accent:'#333',fontFamily:FD,textAlign:'right'}}>{isMerge?'◆':fi}</div>
-            {fn.map(node=>{const reach=co?.conns?.includes(node.id);const isCur=node.id===curNodeId;const nc=NC[node.type]||'#555';
+            {fn.map(node=>{const reach=co?.conns?.includes(node.id);const isCur=node.id===curNodeId;const nc=NC[node.type]||'#555';const isHoverPathNode=hoverActive&&hoveredPathSet?.has(node.id);
               return <div key={node.id} onClick={()=>reach?selectNode(node.id):null} style={{
                 width:50,height:50,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                background:isCur?`${nc}28`:node.visited?'#1a1a2a':reach?`${nc}10`:'#0a0a12',
-                border:`2px solid ${isCur?nc:reach?nc:node.visited?'#333':'#1a1a22'}`,
+                background:isHoverPathNode?`${nc}20`:isCur?`${nc}28`:node.visited?'#1a1a2a':reach?`${nc}10`:'#0a0a12',
+                border:`2px solid ${isHoverPathNode?nc:isCur?nc:reach?nc:node.visited?'#333':'#1a1a22'}`,
                 cursor:reach?'pointer':'default',
-                opacity:!reach&&!node.visited&&!isCur?0.15:1,
+                opacity:!reach&&!node.visited&&!isCur&&!isHoverPathNode?0.15:1,
+                boxShadow:isHoverPathNode?`0 0 14px ${nc}88`:undefined,
                 transition:'all 0.2s',
-              }} onMouseEnter={e=>{if(reach){e.currentTarget.style.transform='scale(1.15)';e.currentTarget.style.boxShadow=`0 0 14px ${nc}88`;}}}
-                 onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='';}}>
+              }} onMouseEnter={e=>{setHoverNodeId(node.id);if(reach){e.currentTarget.style.transform='scale(1.15)';e.currentTarget.style.boxShadow=`0 0 14px ${nc}88`;}}}
+                 onMouseLeave={e=>{setHoverNodeId(null);e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=isHoverPathNode?`0 0 14px ${nc}88`:'';}}>
                 <div style={{fontSize:16}}>{NI[node.type]}</div>
-                <div style={{fontSize:9,color:isCur||reach?nc:'#444',fontFamily:FD,letterSpacing:0.5}}>{node.type.toUpperCase()}</div>
+                <div style={{fontSize:9,color:isHoverPathNode||isCur||reach?nc:'#444',fontFamily:FD,letterSpacing:0.5}}>{node.type.toUpperCase()}</div>
                 {reach&&<div style={{fontSize:8,color:nc,fontFamily:FD}}>TAP</div>}
               </div>;})}
           </div>;
