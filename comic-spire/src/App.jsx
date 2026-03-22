@@ -752,7 +752,7 @@ function bReduce(state,action){
       if(newActive.length>0)s.log=[...s.log,`⏳ ${newActive.length} charged card(s) ready to fire next turn!`];
       s.turnLogStart=s.log.length;
       return s;}
-    default:return s;
+    default:return state;
   }
 }
 
@@ -881,6 +881,9 @@ export default function ComicSpire(){
     if(screen==='map'){
       window.scrollTo({top:0});
       setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),350);
+    }
+    if(screen==='battle'){
+      window.scrollTo({top:0});
     }
     if(screen==='openingCinematic'){
       window.scrollTo({top:0});
@@ -1028,16 +1031,12 @@ export default function ComicSpire(){
         audio.playTurnEnd();
         setSlatePreview({cards:cardData,variant:slateVariant});
         setTimeout(()=>setSlatePreview(null),900);
+        doShake();
       }
     }
 
-    if(battle.phase==='player'&&currQueued>0){
-      dispatch({type:'RESOLVE_NEXT_PAGE',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p)});
-      doShake();
-    }
-
     prevQueuedPagesRef.current=battle.queuedPages.length;
-  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake,audio]);
+  },[battle.queuedPages,battle.phase,screen,audio,doShake]);
 
   const startGame=useCallback(()=>{
     audio.unlock();
@@ -1100,9 +1099,9 @@ export default function ComicSpire(){
     const finalPages=[...battle.queuedPages];
     if(battle.placedCards.length>0)finalPages.push({cards:battle.placedCards});
     if(finalPages.length>0){
-      // Build slate preview: one entry per actual card placed (up to 4)
-      const allCards=finalPages.flatMap(pg=>pg.cards||[]);
-      const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
+      // Use the most recently played page for preview so playback matches latest cards.
+      const latestPageCards=(finalPages[finalPages.length-1]?.cards||[]).slice(0,4);
+      const cardData=latestPageCards.map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       const slateVariant=pick(['Bubble','Brutal','Action']);
       audio.unlock();
       audio.playTurnEnd();
@@ -1148,7 +1147,7 @@ export default function ComicSpire(){
       else pool=[...neutralEvents,...heroEvents.slice(0,2),...villainEvents.slice(0,2)];
       setCurEvent(pick(pool));setScreen('event');
     }
-    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';audio.playJingle('rest',al);setRestPopup({hp:h});}
+    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';audio.playJingleBgm('rest',al);setRestPopup({hp:h});}
   },[audio,hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus,evilness]);
 
   // ── DEBUG ──
@@ -1235,8 +1234,8 @@ export default function ComicSpire(){
       else if(al==='villain')pool=[...neutralEvents,...neutralEvents,...villainEvents];
       else pool=[...neutralEvents,...heroEvents.slice(0,2),...villainEvents.slice(0,2)];
       setCurEvent(pick(pool));setScreen('event');
-    } else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});setScreen('map');}
-  },[hexMap,heroes,relics,player,evilness,ngPlus]);
+    } else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';audio.playJingleBgm('rest',al);setRestPopup({hp:h});setScreen('map');}
+  },[audio,hexMap,heroes,relics,player,evilness,ngPlus]);
 
   const handleEvent=useCallback(opt=>{
     const cp=deck.filter(c=>c.copiedFrom);
@@ -1552,7 +1551,7 @@ export default function ComicSpire(){
           <div style={{fontSize:36,marginBottom:8}}>🏕️</div>
           <div style={{fontFamily:FD,fontSize:18,color:'#66bb66',marginBottom:4}}>REST SITE</div>
           <div style={{fontFamily:FB,fontSize:13,color:'#aaa',marginBottom:16}}>You recover <span style={{color:'#66ff66',fontWeight:700}}>+{restPopup.hp} HP</span></div>
-          <button onClick={()=>{healPlayer(restPopup.hp);setMapLog(p=>[...p,`🏕 +${restPopup.hp} HP`]);setRestPopup(null);}} style={{fontFamily:FD,fontSize:13,padding:'7px 28px',background:'linear-gradient(135deg,#336633,#55aa55)',border:'2px solid #66bb66',borderRadius:7,color:'#fff',cursor:'pointer'}}>
+          <button onClick={()=>{healPlayer(restPopup.hp);setMapLog(p=>[...p,`🏕 +${restPopup.hp} HP`]);setRestPopup(null);audio.unlock();audio.playMenuBgm(alignment);}} style={{fontFamily:FD,fontSize:13,padding:'7px 28px',background:'linear-gradient(135deg,#336633,#55aa55)',border:'2px solid #66bb66',borderRadius:7,color:'#fff',cursor:'pointer'}}>
             Rest →
           </button>
         </div>
@@ -1794,7 +1793,7 @@ export default function ComicSpire(){
     const allPageCards=[...battle.placedCards,...battle.pendingCharges,...battle.activeCharges];
 
     return (
-      <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:1.3}}>
+      <div style={{minHeight:'100vh',background:bg1,padding:'8px 10px 4px',fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:1.3}}>
         <style>{CSS}</style><DebugPanel/><TooltipOverlay/><AlignNotif/>
         {slatePreview!==null&&(()=>{
           const{cards,variant}=slatePreview;
