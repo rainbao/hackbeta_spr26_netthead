@@ -1239,10 +1239,21 @@ export default function ComicSpire(){
         if(selCard){
           const validSet=getValid(battle.page,selCard);
           const key=`${focusedCell[0]}-${focusedCell[1]}`;
-          if(validSet.has(key)){placeCard(selCard,focusedCell[0],focusedCell[1]);setSelectedCardId(null);}
-          else{// jump to first valid cell
+          if(validSet.has(key)){
+            placeCard(selCard,focusedCell[0],focusedCell[1]);
+            setSelectedCardId(null);
+          }
+          else{
+            // If focused slot is invalid, auto-place on the first valid slot
+            // so Enter doesn't require a second press.
             const first=[...validSet][0];
-            if(first){const[r,c]=first.split('-').map(Number);setFocusedCell([r,c]);}}
+            if(first){
+              const[r,c]=first.split('-').map(Number);
+              setFocusedCell([r,c]);
+              placeCard(selCard,r,c);
+              setSelectedCardId(null);
+            }
+          }
         }else{
           endTurn();
         }
