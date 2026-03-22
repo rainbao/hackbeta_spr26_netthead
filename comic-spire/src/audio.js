@@ -22,6 +22,11 @@ const AUDIO_PATHS = {
     catalyze: "/assets/skill_catalyze.ogg",
     overchannel: "/assets/skill_channeling.ogg",
   },
+  placeByType: {
+    defend: "/assets/skill_fortify.ogg",
+    magic: "/assets/skill_channeling.ogg",
+    draw: "/assets/card_draw.ogg",
+  },
 };
 
 const pickOne = (value) => {
@@ -106,9 +111,14 @@ export function createAudioSystem(config = AUDIO_PATHS) {
     playDraw() {
       playSfx(config.draw, 0.45);
     },
-    playPlace(keyword) {
+    playPlace(keyword, cardType) {
       const key = String(keyword || "").toLowerCase();
-      const path = pickOne(config.placeByKeyword[key]) || config.placeDefault;
+      let path = pickOne(config.placeByKeyword[key]);
+      if (!path) {
+        const typeKey = String(cardType || "").toLowerCase();
+        path = config.placeByType[typeKey];
+      }
+      path = path || config.placeDefault;
       playSfx(path, 0.6);
     },
   };

@@ -969,7 +969,7 @@ export default function ComicSpire(){
 
   const placeCard=useCallback((card,r,c)=>{
     audio.unlock();
-    audio.playPlace(card.keyword);
+    audio.playPlace(card.keyword, card.type);
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
   },[audio,relics,player]);
@@ -1674,7 +1674,7 @@ export default function ComicSpire(){
             {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} — click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
-            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>{const nextId=card.id===selectedCardId?null:card.id;if(nextId){audio.unlock();audio.playSelect();}setSelectedCardId(nextId);}} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
+            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>{const nextId=card.id===selectedCardId?null:card.id;if(nextId){audio.unlock();audio.playSelect();if(card.type==='draw'){audio.playDraw();}}setSelectedCardId(nextId);}} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
           </div>
         </div>
         <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center'}}>
