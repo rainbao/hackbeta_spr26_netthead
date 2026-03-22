@@ -1836,13 +1836,80 @@ export default function ComicSpire(){
   </div>);}
 
   if(screen==='gameOver')return (
-    <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
-    <div style={{fontSize:48,marginBottom:8}}>💀</div>
-    <h1 style={{fontSize:40,color:'#ff3333',textShadow:'4px 4px 0 #000',margin:'0 0 8px'}}>POTENTIAL LOST</h1>
-    <p style={{fontFamily:FB,fontSize:14,color:'#777',marginBottom:6}}>Floor {curFloor} · {copiedAbilities.length} superpowers · {relics.length} Amps</p>
-    <p style={{fontFamily:FD,fontSize:13,color:alignColor,marginBottom:16}}>Fell as {alignLabel}</p>
-    <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'10px 28px',background:'linear-gradient(135deg,#ff3366,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer'}}>RETRY</button>
-  </div>);
+    <div style={{minHeight:'100vh',background:'#02000a',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
+      <style>{CSS}</style>
+      {/* atmosphere */}
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 80% 60% at 50% 40%,#3a000a 0%,#0a0008 55%,#000 100%)',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff05 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',left:0,right:0,height:80,background:'linear-gradient(180deg,transparent,#ff000006,transparent)',animation:'scanline 6s linear infinite',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',width:600,height:600,border:'1px solid #ff110022',borderRadius:'50%',boxShadow:'0 0 100px #cc000022,inset 0 0 100px #88000014',animation:'pulse 4s ease-in-out infinite',pointerEvents:'none'}}/>
+
+      {/* content */}
+      <div style={{position:'relative',zIndex:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
+
+        {/* skull */}
+        <div style={{fontSize:72,marginBottom:16,filter:'drop-shadow(0 0 24px #ff220088)',animation:'float 4s ease-in-out infinite'}}>💀</div>
+
+        {/* GAME OVER */}
+        <div style={{fontSize:'clamp(52px,10vw,96px)',lineHeight:0.9,fontFamily:FD,letterSpacing:8,
+          background:'linear-gradient(170deg,#fff 0%,#ff8888 30%,#cc0000 70%,#660000 100%)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 24px #ff000055) drop-shadow(3px 5px 0 #000)',
+          animation:'fadeUp 0.5s ease both,pulse 5s 0.5s ease-in-out infinite',
+          marginBottom:4}}>
+          GAME
+        </div>
+        <div style={{fontSize:'clamp(52px,10vw,96px)',lineHeight:0.9,fontFamily:FD,letterSpacing:8,
+          background:'linear-gradient(170deg,#fff 0%,#ff8888 30%,#cc0000 70%,#660000 100%)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 24px #ff000055) drop-shadow(3px 5px 0 #000)',
+          animation:'fadeUp 0.5s 0.08s ease both',
+          marginBottom:20}}>
+          OVER
+        </div>
+
+        {/* divider */}
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16,animation:'fadeUp 0.4s 0.2s ease both',opacity:0}}>
+          <div style={{width:50,height:1,background:'linear-gradient(90deg,transparent,#ff333366)'}}/>
+          <span style={{fontFamily:FB,fontSize:10,letterSpacing:5,color:'#ff333366',textTransform:'uppercase'}}>Potential Lost</span>
+          <div style={{width:50,height:1,background:'linear-gradient(270deg,transparent,#ff333366)'}}/>
+        </div>
+
+        {/* run stats */}
+        <div style={{display:'flex',gap:24,marginBottom:8,animation:'fadeUp 0.4s 0.28s ease both',opacity:0}}>
+          {[['🏢','Floor',curFloor],['⚡','Powers',copiedAbilities.length],['🎒','Amps',relics.length],['⚔️','Level',potLv]].map(([icon,label,val])=>
+            <div key={label} style={{textAlign:'center'}}>
+              <div style={{fontSize:18}}>{icon}</div>
+              <div style={{fontFamily:FD,fontSize:20,color:'#fff'}}>{val}</div>
+              <div style={{fontFamily:FB,fontSize:10,color:'#555',letterSpacing:2,textTransform:'uppercase'}}>{label}</div>
+            </div>
+          )}
+        </div>
+
+        {/* alignment */}
+        <div style={{fontFamily:FB,fontSize:12,color:alignColor,marginBottom:32,letterSpacing:2,animation:'fadeUp 0.4s 0.34s ease both',opacity:0}}>
+          Fell as {alignLabel}
+        </div>
+
+        {/* buttons */}
+        <div style={{display:'flex',gap:12,animation:'fadeUp 0.4s 0.42s ease both',opacity:0}}>
+          <button onClick={startGame} style={{fontFamily:FD,fontSize:18,padding:'13px 40px',
+            background:'linear-gradient(135deg,#cc2200,#880000)',
+            border:'none',borderRadius:3,color:'#fff',cursor:'pointer',
+            letterSpacing:4,textTransform:'uppercase',
+            boxShadow:'0 0 32px #cc000044,0 4px 0 #440000,0 8px 20px #00000066',
+            animation:'float 3s 0.8s ease-in-out infinite'}}>
+            TRY AGAIN
+          </button>
+          <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:14,padding:'13px 28px',
+            background:'transparent',
+            border:'1px solid #ff333344',borderRadius:3,color:'#ff3333aa',cursor:'pointer',
+            letterSpacing:3,textTransform:'uppercase'}}>
+            MENU
+          </button>
+        </div>
+      </div>
+    </div>);
 
   if(screen==='victory')return (
     <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16,textAlign:'center'}}><style>{CSS}</style>
