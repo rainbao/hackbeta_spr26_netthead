@@ -177,10 +177,10 @@ function getSignature(hero){
 function makeStarterDeck(){
   const mk=(nm,d,t,ic,v,kw='',cost=1)=>({id:uid(),name:nm,desc:d,type:t,icon:ic,value:v,cost,shape:'s1',panelSize:1,hits:1,debuff:0,keyword:kw,bloodCost:0,charge:false,heroName:'Potential Man',color:'#888',tier:0,copiedFrom:null,threat:0,bestStat:null,archetype:''});
   return[
-    mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),
-    mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),
-    mk('Spark','Deal 3 magic (30% pierces block)','magic','✨',3),mk('Spark','Deal 3 magic (30% pierces block)','magic','✨',3),
-    mk('Adapt','Heal 4','heal','🔄',4),mk('Adapt','Heal 4','heal','🔄',4),
+    mk('Potential Punch','Deal 4','attack','👊',4),mk('Potential Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),
+    mk('Potential Guard','Gain 4 Block','defend','🤲',4),mk('Potential Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),
+    mk('Potential Spark','Deal 3 magic (30% pierces block)','magic','✨',3),mk('Potential Spark','Deal 3 magic (30% pierces block)','magic','✨',3),
+    mk('Adaptation','Heal 4','heal','⚕️',4),mk('Adaptation','Heal 4','heal','⚕️',4),
     mk('Rally','Draw 2 extra superpowers next turn','draw','📖',2)];
 }
 
