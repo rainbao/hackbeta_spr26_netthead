@@ -95,6 +95,17 @@ const KW_INFO={
   frenzy:{name:'FRENZY',color:'#ff55aa',desc:'Costs 0 energy but takes 2 panel slots.'},
 };
 
+const ATTR_INFO=[
+  {key:'Strength',icon:'💪',color:'#ff5544',desc:'Base 40. +2 atk per 12 pts above 40'},
+  {key:'Magic',icon:'✨',color:'#bb55ff',desc:'Base 40. +2 magic per 12 pts above 40'},
+  {key:'Defense',icon:'🛡️',color:'#4499ff',desc:'Base 40. +1 def stat; +2 block per 12 pts'},
+  {key:'Speed',icon:'⚡',color:'#33ddff',desc:'Base 40. +1 draw card per 6 pts above 40'},
+  {key:'Vitality',icon:'❤️',color:'#ff4466',desc:'+8 max HP per pt (no base stat)'},
+  {key:'Poison',icon:'☠️',color:'#44dd66',desc:'Base 40. +2 poison stacks per 12 pts'},
+  {key:'Rage',icon:'🔥',color:'#ff7722',desc:'Base 40. +2 rage dmg; -1 blood cost per 12 pts'},
+  {key:'Power',icon:'⭐',color:'#ffd700',desc:'Base 40. +1% crit per 6 pts above 40'},
+];
+
 // Panel shape definitions: array of [row_offset, col_offset] from placement point
 const SHAPES={
   s1:[[0,0]],          // 1 slot
@@ -171,7 +182,7 @@ function makeStarterDeck(){
     mk('Rally','Draw 2 extra superpowers next turn','draw','📖',2)];
 }
 
-function makeEnemy(hero,floor,isBoss,isElite){
+function makeEnemy(hero,floor,isBoss,isElite,ngPlus=0){
   const stats={};SK.forEach(k=>stats[k]=$(hero[k]));const sorted=Object.values(stats).sort((a,b)=>b-a);
   const threat=sorted[0]+sorted[1]+sorted[2];
   // Classify based on threat vs floor-scaled thresholds — strong enemies in normal slots become sub-elite
@@ -181,7 +192,8 @@ function makeEnemy(hero,floor,isBoss,isElite){
   const baseM=1+floor*0.1;
   const earlyFactor=floor<3?0.65+floor*0.12:1.0;// floor0=0.65, floor1=0.77, floor2=0.89, floor3+=1.0
   const typeM=effectiveClass==='boss'?1.4:effectiveClass==='elite'?1.2:1.0;
-  const m=baseM*typeM*earlyFactor;
+  const ngM=1+(ngPlus||0)*0.35;// NG+: +35% scaling per ascension
+  const m=baseM*typeM*earlyFactor*ngM;
   const hp=Math.floor((28+stats.Defense*0.25+stats.Strength*0.08)*m);
   return{...hero,gameHp:hp,gameMaxHp:hp,block:0,poisonStacks:0,corrodeStacks:0,weakened:0,
     atk:Math.floor(3+(stats.Strength*0.07+stats.Power*0.05)*m+floor*0.4),
@@ -283,7 +295,7 @@ function rollIntent(en){const r=Math.random(),ac=0.45+$(en.Rage)/300;
   if(r<ac+0.2)return{intent:'magic',intentVal:Math.max(1,en.mag)+Math.floor(Math.random()*3)};
   if(r<ac+0.35)return{intent:'defend',intentVal:en.def+Math.floor(Math.random()*3)};
   return{intent:'buff',intentVal:Math.floor(en.atk*0.2)+2};}
-function pickEnemy(heroes,floor,isBoss,isElite,evilness=50){
+function pickEnemy(heroes,floor,isBoss,isElite,evilness=50,ngPlus=0){
   // Heroes fight villains; villains fight heroes; neutral fights anyone
   const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
   let pool=heroes;
@@ -294,7 +306,7 @@ function pickEnemy(heroes,floor,isBoss,isElite,evilness=50){
   const t=wt.length;let lo,hi;
   if(isBoss){lo=Math.floor(t*0.75);hi=t;}else if(isElite){lo=Math.floor(t*0.5);hi=Math.floor(t*0.85);}
   else{const p=floor/14;const spread=floor<3?0.18:0.25;lo=Math.floor(t*Math.max(0,p-spread));hi=Math.floor(t*Math.min(0.7+p*0.3,p+spread));}
-  return makeEnemy(pick(wt.slice(clamp(lo,0,t-1),clamp(hi,lo+1,t))).hero,floor,isBoss,isElite);}
+  return makeEnemy(pick(wt.slice(clamp(lo,0,t-1),clamp(hi,lo+1,t))).hero,floor,isBoss,isElite,ngPlus);}
 
 function makeMap(){
   const struct=[1,3,3,3,2,3,3,3,2,2,2,2,1,1,1,1];
@@ -325,10 +337,10 @@ function makeMap(){
 const EVENTS=[
   // Classic neutral events
   {title:'Mysterious Stranger',opts:[{text:'💪 Upgrade a card',fx:'upgrade'},{text:'🗑️ Remove a basic card',fx:'remove'},{text:'💚 +10 HP',fx:'heal',v:10}]},
-  {title:'Abandoned Lab',opts:[{text:'🔬 +1 energy',fx:'maxEn'},{text:'💰 +25 gold',fx:'gold',v:25},{text:'💚 +5 HP',fx:'heal',v:5}]},
+  {title:'Abandoned Lab',opts:[{text:'🔬 +1 energy (−15 max HP)',fx:'maxEn'},{text:'💰 +25 gold',fx:'gold',v:25},{text:'💚 +5 HP',fx:'heal',v:5}]},
   {title:'The Mirror',opts:[{text:'🪞 Duplicate best card',fx:'dupe'},{text:'🔄 Upgrade weakest',fx:'upWeak'},{text:'💚 +12 HP',fx:'heal',v:12}]},
   {title:'Mysterious Signal',opts:[{text:'📡 Follow it — duplicate best card',fx:'dupe'},{text:'🔮 Ignore it — +20 gold',fx:'gold',v:20},{text:'💚 Rest — +15 HP',fx:'heal',v:15}]},
-  {title:'Temporal Rift',opts:[{text:'⏩ Leap forward — +1 energy',fx:'maxEn'},{text:'🔄 Rewind — upgrade weakest',fx:'upWeak',evil:-2},{text:'⚡ Absorb — +20 gold',fx:'gold',v:20,evil:2}]},
+  {title:'Temporal Rift',opts:[{text:'⏩ Leap forward — +1 energy (−15 max HP)',fx:'maxEn'},{text:'🔄 Rewind — upgrade weakest',fx:'upWeak',evil:-2},{text:'⚡ Absorb — +20 gold',fx:'gold',v:20,evil:2}]},
   // Hero-leaning events
   {title:'Wounded Civilian',opts:[{text:'🩹 Help them — +15 HP',fx:'heal',v:15,evil:-6},{text:'💰 Demand payment — +15 gold',fx:'gold',v:15,evil:4},{text:'🚶 Walk away',fx:'nothing',evil:2}]},
   {title:'Hero Code',opts:[{text:'📖 Study heroics — upgrade a card',fx:'upgrade',evil:-5},{text:'🛒 Sell the book — +20 gold',fx:'gold',v:20,evil:3},{text:'🔥 Burn it — remove a basic',fx:'remove',evil:5}]},
@@ -336,7 +348,7 @@ const EVENTS=[
   {title:'Crisis Hotline',opts:[{text:'🦸 Talk them down — +12 HP',fx:'heal',v:12,evil:-6},{text:'📵 Refuse the call',fx:'nothing',evil:3},{text:'💰 Send someone else — +20 gold',fx:'gold',v:20,evil:-2}]},
   // Villain-leaning events
   {title:"Villain's Cache",opts:[{text:'💰 Take the loot — +30 gold',fx:'gold',v:30,evil:7},{text:'🗑️ Destroy it — remove a basic',fx:'remove',evil:-5},{text:'🚶 Leave it',fx:'nothing',evil:0}]},
-  {title:'Dark Merchant',opts:[{text:'🛒 Buy contraband — +1 energy',fx:'maxEn',evil:6},{text:'🚔 Report them — +20 gold',fx:'gold',v:20,evil:-5},{text:'💰 Negotiate — +15 gold',fx:'gold',v:15,evil:2}]},
+  {title:'Dark Merchant',opts:[{text:'🛒 Buy contraband — +1 energy (−15 max HP)',fx:'maxEn',evil:6},{text:'🚔 Report them — +20 gold',fx:'gold',v:20,evil:-5},{text:'💰 Negotiate — +15 gold',fx:'gold',v:15,evil:2}]},
   {title:'Hostage Situation',opts:[{text:'🦸 Rescue them — +15 HP',fx:'heal',v:15,evil:-7},{text:'🤝 Negotiate — duplicate best card',fx:'dupe',evil:3},{text:'💀 Use it to your advantage — +30 gold',fx:'gold',v:30,evil:8}]},
   {title:'Suspicious Alley',opts:[{text:'👀 Investigate — remove a basic',fx:'remove',evil:-2},{text:'💰 Accept the bribe — +25 gold',fx:'gold',v:25,evil:4},{text:'🚶 Keep walking',fx:'nothing',evil:0}]},
 ];
@@ -443,9 +455,13 @@ function calcProjectedDmg(card,battle,relics,en){
 }
 
 // ═══ RESOLVE CARD (called during END_TURN in reading order) ═══
-function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
+function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard,pAttrs={}){
   const hasR=fx=>relics?.some(r=>r.fx===fx);
-  const crit=Math.random()*100<(10+(hasR('critUp')?10:0)+(hasR('critSmall')?5:0));
+  // Stats from full player object: base CSV (40) + attrs bonus. Delta above 40 drives bonuses.
+  const pStr=((pAttrs.Strength||40)-40);const pMag=((pAttrs.Magic||40)-40);
+  const pDef=((pAttrs.Defense||40)-40);const pPoi=((pAttrs.Poison||40)-40);
+  const pRag=((pAttrs.Rage||40)-40);const pPow=((pAttrs.Power||40)-40);
+  const crit=Math.random()*100<(10+Math.floor(pPow/6)+(hasR('critUp')?10:0)+(hasR('critSmall')?5:0));
   const cm=(crit?1.5:1);
   const chB=card.charge&&hasR('chargePow')?3:0;
   let msg='';
@@ -456,7 +472,7 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
     const echoVal=Math.floor((prevCard.value||0)*echoPct);
     // Replay previous card's effect at reduced value
     const fakeCard={...prevCard,value:echoVal,keyword:'',charge:false,name:'Echo'};
-    const echoMsg=resolveCard(fakeCard,en,st,relics,pHp,pMaxHp,healFn,null);
+    const echoMsg=resolveCard(fakeCard,en,st,relics,pHp,pMaxHp,healFn,null,pAttrs);
     return `🪞 ECHO (${Math.floor(echoPct*100)}%): ${echoMsg}`;
   }
 
@@ -479,9 +495,9 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
   // OVERCHANNEL: channel + corrode
   if(card.keyword==='overchannel'){
     const pow=hasR('chanPow')?1.3:1;
-    const chVal=Math.floor((card.value+chB)*cm*pow);
+    const chVal=Math.floor((card.value+Math.floor(pMag/12)*2+chB)*cm*pow);
     st.channelStacks+=chVal;
-    const poisAmt=Math.ceil(card.value*0.4);
+    const poisAmt=Math.ceil(card.value*0.4)+Math.floor(pPoi/12)*2;
     en.poisonStacks+=poisAmt;en.corrodeStacks=(en.corrodeStacks||0)+poisAmt;
     if(card.debuff)en.weakened=(en.weakened||0)+card.debuff;
     return `🌀 OVERCHANNEL +${chVal} channel + ${poisAmt} corrode`;
@@ -494,25 +510,26 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
       const fb=st.comboCount===0&&hasR('firstStrike')?4:0;
       // Enemy defense (from CSV Defense stat) mitigates physical damage
       const defMit=Math.floor((en.def||0)*0.35);
-      let tot=0;for(let h=0;h<card.hits;h++){let raw=Math.floor((card.value+cb+fb+chB)*cm/card.hits);let d=Math.max(1,raw-defMit);const bl=Math.min(en.block,d);en.block-=bl;d-=bl;en.gameHp=Math.max(0,en.gameHp-d);tot+=d;}
+      const physBonus=Math.floor(pStr/12)*2+(card.type==='rage'?Math.floor(pRag/12)*2:0);
+      let tot=0;for(let h=0;h<card.hits;h++){let raw=Math.floor((card.value+physBonus+cb+fb+chB)*cm/card.hits);let d=Math.max(1,raw-defMit);const bl=Math.min(en.block,d);en.block-=bl;d-=bl;en.gameHp=Math.max(0,en.gameHp-d);tot+=d;}
       msg=`${card.icon} ${card.name} → ${tot}${crit?' CRIT!':''}${cb>0?' +'+cb+' combo':''}${defMit>0?` (−${defMit} def)`:''}`;
       // Only COMBO keyword cards increment the combo counter (not all attacks)
       if(card.keyword==='combo')st.comboCount++;
       st.momentum++;break;}
     case 'magic':{
       if(card.keyword==='channel'){
-        const pow=hasR('chanPow')?1.3:1;const gain=Math.floor((card.value+chB)*cm*pow);
+        const pow=hasR('chanPow')?1.3:1;const gain=Math.floor((card.value+Math.floor(pMag/12)*2+chB)*cm*pow);
         st.channelStacks=Math.min(40,st.channelStacks+gain);
         if(card.debuff)en.weakened=(en.weakened||0)+card.debuff;
         msg=`✨ CHANNEL +${gain} [${st.channelStacks}${st.channelStacks>=40?' MAX':''}]`;
       }else{
         // Magic partially mitigated by defense (half as effective as physical)
         const defMit=Math.floor((en.def||0)*0.18);
-        let d=Math.max(1,Math.floor((card.value+chB)*cm)-defMit);const p2=Math.floor(d*0.4),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
+        let d=Math.max(1,Math.floor((card.value+Math.floor(pMag/12)*2+chB)*cm)-defMit);const p2=Math.floor(d*0.4),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
         msg=`${card.icon} ${card.name} → ${d}${bl>0?` (${bl} blk, ${p2} pierced)`:''}`; }
       st.momentum++;break;}
-    case 'defend':st.playerBlock+=card.value+chB;msg=`🛡️ +${card.value+chB} Block${card.keyword==='fortify'?' [FORTIFY]':''}`;st.momentum++;break;
-    case 'poison':{const extra=hasR('poisUp')?2:0;const amt=Math.ceil(card.value||card.override||3)+extra+chB;
+    case 'defend':{const blkAmt=card.value+Math.floor(pDef/12)*2+chB;st.playerBlock+=blkAmt;msg=`🛡️ +${blkAmt} Block${card.keyword==='fortify'?' [FORTIFY]':''}`;st.momentum++;break;}
+    case 'poison':{const extra=(hasR('poisUp')?2:0)+Math.floor(pPoi/12)*2;const amt=Math.ceil(card.value||card.override||3)+extra+chB;
       en.poisonStacks+=amt;if(card.keyword==='corrode'){en.corrodeStacks=(en.corrodeStacks||0)+amt;msg=`☠️ CORRODE +${amt} [permanent]`;}else msg=`☠️ +${amt} Poison`;st.momentum++;break;}
     case 'heal':healFn(card.value+chB);msg=`💚 +${card.value+chB} HP`;st.momentum++;break;
     case 'draw':st.extraDraw=(st.extraDraw||0)+(card.value+chB);msg=`📖 Draw +${card.value+chB} extra superpowers next turn`;st.momentum++;break;
@@ -528,7 +545,7 @@ const INIT_B={hand:[],drawPile:[],discardPile:[],energy:3,maxEnergy:3,playerBloc
   queuedPages:[],
   placedCards:[],pendingCharges:[],activeCharges:[],// activeCharges = from last turn, visually on page
   turn:1,phase:'player',log:[],turnLogStart:0,victory:false,defeat:false,
-  comboCount:0,channelStacks:0,momentum:0,momentumUsed:false,extraDraw:0,frenzyCost:0,
+  comboCount:0,channelStacks:0,momentum:0,momentumUsed:false,extraDraw:0,
   playerPoison:0,playerCorrode:0};
 
 function bReduce(state,action){
@@ -545,7 +562,8 @@ function bReduce(state,action){
     case 'PLACE_CARD':{
       const{card,row,col,relics}=action;
       const hasR=fx=>relics?.some(r=>r.fx===fx);
-      if(card.keyword==='blood'){const cost=hasR('bloodCheap')?3:card.bloodCost;if(action.playerHp<=cost)return s;action.payBlood(cost);}
+      const pRageAttr=(action.playerAttrs?.Rage||40)-40;
+      if(card.keyword==='blood'){const rageCostReduce=Math.floor(pRageAttr/12);const cost=Math.max(1,(hasR('bloodCheap')?3:card.bloodCost)-rageCostReduce);if(action.playerHp<=cost)return s;action.payBlood(cost);}
       else if(card.keyword==='frenzy'){/* frenzy costs 0 energy */}
       else{let ec=card.cost;const momT=hasR('momDown')?2:3;
         if(s.momentum>=momT&&!s.momentumUsed){ec=0;s.momentumUsed=true;s.log=[...s.log,'⚡ MOMENTUM! Free!'];}
@@ -571,15 +589,14 @@ function bReduce(state,action){
         s.log=[...s.log,`📚 Page ${s.queuedPages.length} saved (${pageCardCount} card${pageCardCount===1?'':'s'})`];
       }
 
-      // Only energy-costing cards count toward momentum (blood/frenzy have their own cost)
-      if(card.keyword!=='blood'&&card.keyword!=='frenzy')s.momentum++;
-      // FRENZY costs 1 card from next hand
-      if(card.keyword==='frenzy')s.frenzyCost=(s.frenzyCost||0)+1;
+      // Only MOMENTUM-keyword cards build momentum
+      if(card.keyword==='momentum')s.momentum++;
       return s;}
 
     case 'END_TURN':{
       if(s.phase!=='player')return s;s.phase='resolving';
       const en={...s.enemy};const{relics,playerHp,playerMaxHp}=action;
+      const pAttrs=action.playerAttrs||{};
       const hasR=fx=>relics?.some(r=>r.fx===fx);
       s.comboCount=0;s.playerBlock=0;
 
@@ -591,7 +608,7 @@ function bReduce(state,action){
         s.log=[...s.log,'⏳ Charged cards fire!'];
         const sorted=[...s.activeCharges].sort((a,b)=>(a.row*COLS+a.col)-(b.row*COLS+b.col));
         let prev=null;
-        sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev);if(msg)s.log=[...s.log,msg];prev=card;});
+        sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev,pAttrs);if(msg)s.log=[...s.log,msg];prev=card;});
       }
 
       // 2. Resolve THIS turn's saved pages + current page in order
@@ -605,7 +622,7 @@ function bReduce(state,action){
           if(en.gameHp<=0||!pg.cards?.length)return;
           s.log=[...s.log,`📄 Page ${pi+1} (${pg.cardCount||pg.cards.length} cards)`];
           const sorted=[...pg.cards].sort((a,b)=>(a.row*COLS+a.col)-(b.row*COLS+b.col));
-          sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev);if(msg)s.log=[...s.log,msg];prev=card;});
+          sorted.forEach(card=>{if(en.gameHp<=0)return;const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev,pAttrs);if(msg)s.log=[...s.log,msg];prev=card;});
         });
       }
 
@@ -696,7 +713,7 @@ function bReduce(state,action){
       // Discard: resolved cards (placed + old activeCharges) + unplayed hand
       const disc=[...s.discardPile,...s.hand,...allPlacedCards,...s.activeCharges];
       let draw=[...s.drawPile];
-      const baseHand=5+(hasR('handSize')?1:0)+(hasR('drawUp')?1:0);
+      const baseHand=5+(hasR('handSize')?1:0)+(hasR('drawUp')?1:0)+Math.floor(((pAttrs.Speed||40)-40)/6);
       const neededHand=Math.max(1,baseHand+(s.extraDraw||0));
       if(draw.length<neededHand){draw=[...draw,...shuffle(disc)];s.discardPile=[];}else{s.discardPile=disc;}
       const hs=Math.min(neededHand,draw.length);s.hand=draw.slice(0,hs);s.drawPile=draw.slice(hs);
@@ -792,6 +809,9 @@ export default function ComicSpire(){
   const[relics,setRelics]=useState([]);
   const[copiedAbilities,setCopiedAbilities]=useState([]);
   const[potLv,setPotLv]=useState(1);
+  const[ngPlus,setNgPlus]=useState(0);
+  const[attrPoints,setAttrPoints]=useState(0);
+  const[pendingAttrs,setPendingAttrs]=useState({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
   const[showCodex,setShowCodex]=useState(false);
   const[codexTab,setCodexTab]=useState('powers');
   const[pendingBattle,setPendingBattle]=useState(null);
@@ -849,20 +869,33 @@ export default function ComicSpire(){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
     setCopiedAbilities(p=>[...p,{name:en.Name,sig:en.signature.name,arch:en.signature.archetype,icon:en.signature.icon,kw:en.signature.keyword}]);
     setPotLv(p=>p+1);
-    // DEF increases every other level (odd levels: 3, 5, 7...)
-    setPlayer(p=>p?{...p,maxHp:p.maxHp+5,hp:Math.min(p.maxHp+5,p.hp+5),def:(p.def||2)+(potLv%2===0?1:0)}:p);
+    setAttrPoints(p=>p+8);
     setRewardRelics(pickRelics(relics,3));setRewardPhase('absorb');
     setSelectedAbsorbCard(null);setAbsorbedCardIds([]);
     setRewardCards(en.deck||[en.signature]);
-    setTimeout(()=>setScreen('reward'),800);}},[battle.victory]);
+    setTimeout(()=>setScreen('battleWin'),500);}},[battle.victory]);
   useEffect(()=>{if(battle.defeat&&screen==='battle')setTimeout(()=>setScreen('gameOver'),600);},[battle.defeat]);
 
   const startGame=useCallback(()=>{
-    setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,speed:55,def:2});
+    setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,def:2,Power:40,Strength:40,Magic:40,Intelligence:40,Speed:40,Defense:40,Poison:40,Rage:40,attrs:{Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0}});
     setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
-    setPotLv(1);setCopiedAbilities([]);setRelics([]);
+    setPotLv(1);setNgPlus(0);setCopiedAbilities([]);setRelics([]);setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
+    enemyCache.current={};
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
     setMapLog(['Choose a path. Branches lock in for 3 floors.']);setScreen('map');
+  },[]);
+
+  const startNewGamePlus=useCallback((currentNgPlus)=>{
+    const nextNg=currentNgPlus+1;
+    setNgPlus(nextNg);
+    setAttrPoints(0);
+    setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
+    enemyCache.current={};
+    // Full HP restore as reward for completing the run
+    setPlayer(p=>p?{...p,hp:p.maxHp}:p);
+    const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
+    setMapLog([`⚡ ASCENSION ${nextNg} — enemies are ${Math.round(nextNg*35)}% stronger!`]);
+    setScreen('map');
   },[]);
 
   const commitBattle=useCallback(()=>{if(!pendingBattle)return;const{nodeId,en}=pendingBattle;const[f]=nodeId.split('-').map(Number);
@@ -872,7 +905,7 @@ export default function ComicSpire(){
   },[pendingBattle,hexMap,deck,maxEnergy,relics]);
 
   const placeCard=useCallback((card,r,c)=>{
-    dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
+    dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
   },[relics,player]);
 
@@ -904,7 +937,7 @@ export default function ComicSpire(){
     }
     setTimeout(()=>{
       dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,playerDef:player?.def||2,
-        evilness,getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
+        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
       doShake();setAnimPhase(null);
     },400);
   },[battle,player,relics,doShake,healPlayer,evilness]);
@@ -914,7 +947,7 @@ export default function ComicSpire(){
     const[cf,ci]=(curNodeId||'0-0').split('-').map(Number);const cur=hexMap[cf]?.[ci];
     if(!cur?.conns?.includes(nodeId)&&f!==0)return;const node=hexMap[f][i];
     if(['battle','elite','boss'].includes(node.type)){
-      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness);
+      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus);
       setPendingBattle({nodeId,en:enemyCache.current[nodeId]});return;}
     setHexMap(prev=>prev.map((row,fi)=>fi===f?row.map(n=>n.id===nodeId?{...n,visited:true}:n):row));setCurFloor(f);setCurNodeId(nodeId);
     if(node.type==='shop'){
@@ -940,7 +973,7 @@ export default function ComicSpire(){
       setCurEvent(pick(pool));setScreen('event');
     }
     else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});}
-  },[hexMap,curNodeId,heroes,player,relics,healPlayer]);
+  },[hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus]);
 
   const handleEvent=useCallback(opt=>{
     const cp=deck.filter(c=>c.copiedFrom);
@@ -948,7 +981,7 @@ export default function ComicSpire(){
     else if(opt.fx==='remove'){const b=deck.filter(c=>!c.copiedFrom&&c.tier===0);if(b.length>0)setDeck(p=>p.filter(x=>x.id!==b[0].id));}
     else if(opt.fx==='heal')healPlayer(opt.v);
     else if(opt.fx==='gold')setGold(p=>p+opt.v);
-    else if(opt.fx==='maxEn')setMaxEnergy(p=>Math.min(5,p+1));
+    else if(opt.fx==='maxEn'){setMaxEnergy(p=>Math.min(5,p+1));setPlayer(p=>p?{...p,maxHp:Math.max(20,p.maxHp-15),hp:Math.max(1,p.hp-15)}:p);}
     else if(opt.fx==='dupe'){if(cp.length>0){const b=[...cp].sort((a,b)=>b.value-a.value)[0];setDeck(p=>[...p,{...b,id:uid()}]);}}
     else if(opt.fx==='upWeak'){if(cp.length>0){const w=[...cp].sort((a,b)=>a.value-b.value)[0];setDeck(p=>p.map(x=>x.id===w.id?{...x,value:Math.floor(x.value*1.4),name:x.name+'+'}:x));}}
     if(opt.evil)setEvilness(p=>clamp(p+opt.evil,0,100));
@@ -1180,17 +1213,101 @@ export default function ComicSpire(){
       </div>;})()}
     </div>);
 
+  // ═══ BATTLE WIN SCREEN ═══
+  if(screen==='battleWin'){
+    const en=battle.enemy;
+    const isBoss=en?.isBoss;const isElite=en?.isElite;
+    const ec=en?.color||accent;
+    const typeLabel=isBoss?'👑 BOSS DEFEATED':isElite?'💀 ELITE DEFEATED':'⚔️ VICTORY!';
+    const typeColor=isBoss?'#ffd700':isElite?'#ff3366':accent;
+    const totalPending=Object.values(pendingAttrs).reduce((a,b)=>a+b,0);
+    const remaining=attrPoints-totalPending;
+    const addAttr=k=>{if(remaining<=0)return;setPendingAttrs(p=>({...p,[k]:p[k]+1}));};
+    const subAttr=k=>{if((pendingAttrs[k]||0)<=0)return;setPendingAttrs(p=>({...p,[k]:Math.max(0,p[k]-1)}));};
+    const handleClaim=()=>{
+      setPlayer(p=>{
+        if(!p)return p;
+        const cur=p.attrs||{};
+        const newAttrs={};ATTR_INFO.forEach(({key})=>{newAttrs[key]=(cur[key]||0)+(pendingAttrs[key]||0);});
+        const vitHp=(pendingAttrs.Vitality||0)*8;
+        const defBonus=(pendingAttrs.Defense||0);
+        // Grow actual CSV stats on the player object
+        const csvDelta={};
+        ['Strength','Magic','Defense','Speed','Poison','Rage','Power'].forEach(k=>{if(pendingAttrs[k])csvDelta[k]=(p[k]||40)+(pendingAttrs[k]||0);});
+        return{...p,...csvDelta,attrs:newAttrs,maxHp:p.maxHp+vitHp,hp:Math.min(p.maxHp+vitHp,p.hp+vitHp),def:(p.def||2)+defBonus};
+      });
+      setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
+      setScreen('reward');
+    };
+    const goldEarned=15+curFloor*3+(isBoss?50:isElite?20:0);
+    return (
+      <div style={{minHeight:'100vh',background:bg1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',fontFamily:FB,color:'#fff',padding:'16px 12px',boxSizing:'border-box',overflowY:'auto'}}>
+        <style>{CSS}</style>
+        {/* Header */}
+        <div style={{textAlign:'center',marginBottom:12,marginTop:8}}>
+          <div style={{fontFamily:FD,fontSize:32,color:typeColor,textShadow:`3px 3px 0 #000`,letterSpacing:2}}>{typeLabel}</div>
+          {en&&<div style={{fontFamily:FD,fontSize:15,color:ec,marginTop:2,letterSpacing:1}}>{en.Name}</div>}
+          <div style={{fontSize:11,color:'#666',marginTop:4}}>Lv.{potLv} · {player?.hp}/{player?.maxHp} HP · 💰 +{goldEarned} gold</div>
+        </div>
+        {/* Superpower unlocked */}
+        {en&&<div style={{width:'100%',maxWidth:360,background:'#ffffff08',border:`1px solid ${ec}44`,borderRadius:8,padding:'8px 12px',marginBottom:10,textAlign:'center',boxSizing:'border-box'}}>
+          <div style={{fontFamily:FD,fontSize:10,color:'#555',letterSpacing:2,marginBottom:4}}>SUPERPOWER UNLOCKED</div>
+          <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center'}}>
+            <span style={{fontSize:24}}>{en.signature.icon}</span>
+            <div style={{textAlign:'left'}}>
+              <div style={{fontFamily:FD,fontSize:12,color:'#fff'}}>{en.signature.name}</div>
+              <div style={{fontSize:10,color:'#aaa'}}>{en.signature.desc}</div>
+            </div>
+          </div>
+        </div>}
+        {/* Attribute allocation */}
+        <div style={{width:'100%',maxWidth:360,background:'#ffffff06',border:'1px solid #ffffff22',borderRadius:8,padding:'10px 12px',marginBottom:10,boxSizing:'border-box'}}>
+          <div style={{textAlign:'center',marginBottom:8}}>
+            <div style={{fontFamily:FD,fontSize:14,color:'#ffd700'}}>LEVEL UP — Lv.{potLv}</div>
+            <div style={{fontSize:11,color:remaining>0?'#ffcc33':'#55ddbb',marginTop:2}}>
+              {remaining>0?`${remaining} point${remaining!==1?'s':''} to spend`:'All points spent ✓'}
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}>
+            {ATTR_INFO.map(({key,icon,color,desc})=>{
+              const cur=key==='Vitality'?(player?.attrs?.Vitality||0):(player?.[key]||40);const pend=(pendingAttrs[key]||0);const total=cur+pend;
+              return(
+                <div key={key} style={{background:'#00000033',border:`1px solid ${color}33`,borderRadius:6,padding:'5px 7px',display:'flex',flexDirection:'column',gap:2}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span style={{fontFamily:FD,fontSize:11,color}}>{icon} {key}</span>
+                    <span style={{fontFamily:FD,fontSize:13,color:'#fff'}}>{total}{pend>0&&<span style={{color:'#ffd700',fontSize:10}}> +{pend}</span>}</span>
+                  </div>
+                  <div style={{fontSize:8,color:'#555',marginBottom:2,lineHeight:1.2}}>{desc}</div>
+                  <div style={{display:'flex',gap:3,justifyContent:'center'}}>
+                    <button onClick={()=>subAttr(key)} disabled={pend<=0} style={{fontFamily:FD,fontSize:13,width:24,height:20,background:'transparent',border:`1px solid ${pend>0?'#ff4444':'#333'}`,borderRadius:3,color:pend>0?'#ff4444':'#333',cursor:pend>0?'pointer':'default',padding:0,lineHeight:1}}>−</button>
+                    <button onClick={()=>addAttr(key)} disabled={remaining<=0} style={{fontFamily:FD,fontSize:13,width:24,height:20,background:'transparent',border:`1px solid ${remaining>0?color:'#333'}`,borderRadius:3,color:remaining>0?color:'#333',cursor:remaining>0?'pointer':'default',padding:0,lineHeight:1}}>+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* Claim button */}
+        <div style={{width:'100%',maxWidth:360,textAlign:'center'}}>
+          <button onClick={handleClaim} style={{fontFamily:FD,fontSize:16,padding:'9px 32px',background:`linear-gradient(135deg,${ec}cc,${isBoss?'#cc6600':isElite?'#660033':accent}cc)`,border:`2px solid ${remaining>0?'#ffcc33':ec}`,borderRadius:8,color:'#fff',cursor:'pointer',width:'100%'}}>
+            {remaining>0?`CLAIM REWARDS (${remaining} pts unspent)`:'CLAIM REWARDS →'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ═══ BATTLE ═══
   if(screen==='battle'){
     const selCard=battle.hand.find(c=>c.id===selectedCardId);
     const validSet=selCard?getValid(battle.page,selCard):new Set();
     const en=battle.enemy;const isP=battle.phase==='player'&&!animPhase;
-    const visibleEnemyPanels=getIntentVisibility(player?.speed||0);
+    const visibleEnemyPanels=getIntentVisibility(player?.Speed||40);
     const queuedCardCount=battle.queuedPages.reduce((sum,p)=>sum+(p.cardCount||p.cards?.length||0),0);
     const totalPlacedCount=queuedCardCount+battle.placedCards.length;
     const totalPageCount=battle.queuedPages.length+(battle.placedCards.length>0?1:0);
     const momT=hasR('momDown')?2:3;
-    const canPlay=c=>{if(!isP)return false;if(c.keyword==='blood')return(player?.hp||0)>(hasR('bloodCheap')?3:c.bloodCost);
+    const canPlay=c=>{if(!isP)return false;if(c.keyword==='blood'){const rageCostReduce=Math.floor(((player?.attrs?.Rage||0))/12);return(player?.hp||0)>Math.max(1,(hasR('bloodCheap')?3:c.bloodCost)-rageCostReduce);}
       if(c.keyword==='frenzy')return getValid(battle.page,c).size>0;
       if(battle.momentum>=momT&&!battle.momentumUsed)return true;return battle.energy>=c.cost;};
 
@@ -1471,6 +1588,18 @@ export default function ComicSpire(){
     <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:12}}>{shopItems.map(i=> <Card key={i.id} card={i} onClick={()=>{if(gold>=i.price){setGold(p=>p-i.price);setDeck(p=>[...p,{...i,id:uid()}]);setShopItems(p=>p.filter(x=>x.id!==i.id));}}} price={i.price} dis={gold<i.price}/>)}</div>
     <div style={{fontFamily:FD,fontSize:12,color:'#777',textAlign:'center',marginBottom:6}}>AMPS</div>
     <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>{shopRelics.map(r=> <Relic key={r.id} relic={r} onClick={()=>{if(gold>=r.price){setGold(p=>p-r.price);applyRelic(r);setShopRelics(p=>p.filter(x=>x.id!==r.id));}}} price={r.price} dis={gold<r.price}/>)}</div>
+    {maxEnergy<5&&<><div style={{fontFamily:FD,fontSize:12,color:'#777',textAlign:'center',marginBottom:6}}>POWER UPGRADES</div>
+    <div style={{display:'flex',justifyContent:'center',marginBottom:12}}>
+      <div style={{padding:'10px 16px',background:'#ffaa3311',border:`2px solid ${gold>=90?'#ffaa33':'#555'}`,borderRadius:10,textAlign:'center',maxWidth:220}}>
+        <div style={{fontSize:28,marginBottom:4}}>⚡</div>
+        <div style={{fontFamily:FD,fontSize:14,color:'#ffaa33',marginBottom:2}}>+1 MAX ENERGY</div>
+        <div style={{fontFamily:'Courier Prime,monospace',fontSize:10,color:'#888',marginBottom:8,lineHeight:1.4}}>Permanently gain 1 energy per turn. Rare and powerful — use wisely.</div>
+        <div style={{fontFamily:FD,fontSize:16,color:gold>=90?'#ffd700':'#ff4455',marginBottom:6}}>💰 90</div>
+        <button onClick={()=>{if(gold>=90){setGold(p=>p-90);setMaxEnergy(p=>Math.min(5,p+1));}}} disabled={gold<90} style={{fontFamily:FD,fontSize:12,padding:'5px 18px',background:gold>=90?'linear-gradient(135deg,#ffaa33,#ff8800)':'#222',border:`1px solid ${gold>=90?'#ffcc55':'#444'}`,borderRadius:6,color:gold>=90?'#fff':'#555',cursor:gold>=90?'pointer':'not-allowed'}}>
+          {gold>=90?'BUY':'Need 💰90'}
+        </button>
+      </div>
+    </div></>}
     <div style={{textAlign:'center'}}><button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:12,padding:'5px 18px',background:'#222',border:`1px solid ${accent}`,borderRadius:6,color:'#fff',cursor:'pointer'}}>LEAVE →</button></div>
   </div>);
 
@@ -1507,12 +1636,16 @@ export default function ComicSpire(){
   </div>);
 
   if(screen==='victory')return (
-    <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
-    <div style={{fontSize:48,marginBottom:8,animation:'float 3s ease-in-out infinite'}}>🏆</div>
-    <h1 style={{fontSize:40,color:'#ffd700',textShadow:`4px 4px 0 ${accent},8px 8px 0 #000`,animation:'pulse 2s ease-in-out infinite',margin:'0 0 8px'}}>POTENTIAL REALIZED</h1>
-    <p style={{fontFamily:FB,fontSize:14,color:'#aaa',marginBottom:6}}>{copiedAbilities.length} superpowers · {relics.length} Amps · Lv.{potLv}</p>
+    <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16,textAlign:'center'}}><style>{CSS}</style>
+    <div style={{fontSize:64,marginBottom:8,animation:'float 3s ease-in-out infinite'}}>🏆</div>
+    <h1 style={{fontSize:40,color:'#ffd700',textShadow:`4px 4px 0 ${accent},8px 8px 0 #000`,animation:'pulse 2s ease-in-out infinite',margin:'0 0 4px'}}>POTENTIAL REALIZED</h1>
+    {ngPlus>0&&<div style={{fontFamily:FD,fontSize:13,color:'#ffaa33',marginBottom:4}}>ASCENSION {ngPlus} CLEARED</div>}
+    <p style={{fontFamily:'Courier Prime,monospace',fontSize:13,color:'#aaa',marginBottom:4}}>{copiedAbilities.length} superpowers · {relics.length} Amps · Lv.{potLv}</p>
     <p style={{fontFamily:FD,fontSize:13,color:alignColor,marginBottom:16}}>Victory as {alignLabel}</p>
-    <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'10px 28px',background:`linear-gradient(135deg,#ffd700,${accent})`,border:'2px solid #fff',borderRadius:8,color:'#000',cursor:'pointer'}}>AGAIN</button>
+    <div style={{display:'flex',gap:10,flexWrap:'wrap',justifyContent:'center'}}>
+      {maxEnergy<5&&<button onClick={()=>startNewGamePlus(ngPlus)} style={{fontFamily:FD,fontSize:15,padding:'10px 28px',background:`linear-gradient(135deg,#aa44ff,#ff3366)`,border:'3px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer',boxShadow:'0 0 30px #aa44ff55'}}>⚡ ASCEND ({ngPlus+1}+)<br/><span style={{fontSize:10,opacity:0.8}}>Keep build · +{Math.round((ngPlus+1)*35)}% enemy scaling</span></button>}
+      <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:14,padding:'10px 28px',background:`linear-gradient(135deg,#ffd700,${accent})`,border:'2px solid #fff',borderRadius:8,color:'#000',cursor:'pointer'}}>NEW RUN</button>
+    </div>
   </div>);
 
   return null;
