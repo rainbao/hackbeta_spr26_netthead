@@ -1,7 +1,7 @@
 # Potential Man Technical Documentation
 
 ## 1. Project Overview
-Potential Man is a single-player, comic-themed roguelike deckbuilder built in React. The core gameplay loop combines map navigation, tactical panel placement in a 2x2 combat grid, enemy deck simulation, card/relic rewards, and alignment-driven progression. The game emphasizes expressive keyword synergies (for example Combo, Channel, Blood, Corrode, and Momentum) and run-to-run variance through procedural map paths, randomized encounters, and dynamic enemy generation from CSV data.
+Potential Man is a single-player, comic-themed roguelike deckbuilder built in React. The core gameplay loop combines map navigation, tactical panel placement in a 2x2 combat grid, enemy deck simulation, card/amp rewards, and alignment-driven progression. The game emphasizes expressive keyword synergies (for example Combo, Channel, Blood, Corrode, and Momentum) and run-to-run variance through procedural map paths, randomized encounters, and dynamic enemy generation from CSV data.
 
 ## 2. Tech Stack and Runtime
 - Frontend framework: React (functional components + hooks)
@@ -25,7 +25,7 @@ Potential Man is a single-player, comic-themed roguelike deckbuilder built in Re
 1. Start run from title screen.
 2. Traverse branching map nodes (battle, elite, boss, shop, event, rest).
 3. Enter encounters and resolve tactical card turns in battle.
-4. Collect rewards (cards/relics/gold/progression stats).
+4. Collect rewards (cards/amps/gold/progression stats).
 5. Continue floor-by-floor until victory or defeat.
 
 ### 4.2 Combat Model
@@ -36,8 +36,8 @@ Potential Man is a single-player, comic-themed roguelike deckbuilder built in Re
 
 ### 4.3 Resource and Progression Systems
 - Energy-per-turn gating controls player tempo and hand usage.
-- Gold economy drives shop purchases for cards and relics.
-- Relics provide passive modifiers and build-defining synergies.
+- Gold economy drives shop purchases for cards and amps.
+- Amps provide passive modifiers and build-defining synergies.
 - Evilness/alignment modifies run flavor and influences encounter/vendor behavior.
 - Ascension/New Game Plus increases challenge and extends replayability.
 
@@ -45,7 +45,7 @@ Potential Man is a single-player, comic-themed roguelike deckbuilder built in Re
 - `battle`: standard enemy fight
 - `elite`: harder encounter with stronger reward potential
 - `boss`: major gate encounter with high stakes
-- `shop`: spend gold on cards/relics
+- `shop`: spend gold on cards/amps
 - `event`: choice-based outcomes with risk/reward
 - `rest`: recovery/utility pause in run pacing
 
@@ -66,7 +66,7 @@ Enemies are generated using hero data plus floor context and encounter type (nor
 ### 5.3 Reward Generation
 Rewards are assembled from multiple systems:
 - card reward pools from defeated enemies
-- relic candidates filtered by current inventory/synergy
+- amp candidates filtered by current inventory/synergy
 - floor-scaled gold payouts
 
 ## 6. Application Architecture
@@ -95,7 +95,7 @@ The app uses a screen enum pattern (`title`, `map`, `battle`, `shop`, etc.) and 
   - `Arrow keys`: move focused grid cell
   - `Enter`: place selected card or end turn
   - `Escape`: cancel selection
-- Pointer interactions for card/relic selection and keyword tooltips
+- Pointer interactions for card/amp selection and keyword tooltips
 - Visual feedback includes HP bars, intent boxes, floating combat text, shake effects, and alignment notifications
 - Debug overlay supports rapid balancing and QA verification
 
@@ -115,7 +115,7 @@ Audio is event-driven and context-aware:
 The current architecture is well-positioned for:
 - modular extraction of battle logic into separate files/services
 - event pack expansion and content pipelines
-- additional card keywords, relic classes, and node types
+- additional card keywords, amp classes, and node types
 - persistent unlock systems (local storage / backend sync)
 - stronger testing around reducer transitions and deterministic combat outcomes
 
@@ -130,4 +130,4 @@ npm run dev
 Then open the local Vite URL in a browser.
 
 ## 12. Summary
-Comic Spire is a technically ambitious hackathon game that merges a distinctive comic-panel combat mechanic with roguelike progression systems. Its single-page React architecture centralizes gameplay state while still supporting rich interaction design, procedural variation, and extensible content systems suitable for future iterations.
+Potential Man is a game that merges a distinctive comic-panel combat mechanic with roguelike progression systems. Its single-page React architecture centralizes gameplay state while still supporting rich interaction design, procedural variation, and extensible content systems suitable for future iterations.
