@@ -297,18 +297,30 @@ function rollIntent(en){const r=Math.random(),ac=0.45+$(en.Rage)/300;
   if(r<ac+0.2)return{intent:'magic',intentVal:Math.max(1,en.mag)+Math.floor(Math.random()*3)};
   if(r<ac+0.35)return{intent:'defend',intentVal:en.def+Math.floor(Math.random()*3)};
   return{intent:'buff',intentVal:Math.floor(en.atk*0.2)+2};}
-function pickEnemy(heroes,floor,isBoss,isElite,evilness=50,ngPlus=0){
+function pickEnemy(heroes,floor,isBoss,isElite,evilness=50,ngPlus=0,opts={}){
+  const{avoidDefensive=false}=opts;
   // Heroes fight villains; villains fight heroes; neutral fights anyone
   const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
   let pool=heroes;
   if(al==='hero')pool=heroes.filter(h=>h.isVillain==='True');
   else if(al==='villain')pool=heroes.filter(h=>h.isVillain!=='True');
   if(pool.length<2)pool=heroes;// fallback if not enough typed heroes
-  const wt=pool.map(h=>{const st={};SK.forEach(k=>st[k]=$(h[k]));const s=Object.values(st).sort((a,b)=>b-a);return{hero:h,threat:s[0]+s[1]+s[2]}}).sort((a,b)=>a.threat-b.threat);
+  const wt=pool.map(h=>{
+    const st={};SK.forEach(k=>st[k]=$(h[k]));
+    const s=Object.values(st).sort((a,b)=>b-a);
+    const offensePeak=Math.max(st.Power||0,st.Strength||0,st.Magic||0,st.Intelligence||0,st.Rage||0,st.Poison||0);
+    const isDefensive=(st.Defense||0)>=Math.max(45,offensePeak);
+    return{hero:h,threat:s[0]+s[1]+s[2],isDefensive};
+  }).sort((a,b)=>a.threat-b.threat);
   const t=wt.length;let lo,hi;
   if(isBoss){lo=Math.floor(t*0.75);hi=t;}else if(isElite){lo=Math.floor(t*0.5);hi=Math.floor(t*0.85);}
   else{const p=floor/14;const spread=floor<3?0.18:0.25;lo=Math.floor(t*Math.max(0,p-spread));hi=Math.floor(t*Math.min(0.7+p*0.3,p+spread));}
-  return makeEnemy(pick(wt.slice(clamp(lo,0,t-1),clamp(hi,lo+1,t))).hero,floor,isBoss,isElite,ngPlus);}
+  let candidates=wt.slice(clamp(lo,0,t-1),clamp(hi,lo+1,t));
+  if(avoidDefensive&&!isBoss&&!isElite){
+    const nonDefensive=candidates.filter(x=>!x.isDefensive);
+    if(nonDefensive.length>0)candidates=nonDefensive;
+  }
+  return makeEnemy(pick(candidates).hero,floor,isBoss,isElite,ngPlus);}
 
 function makeMap(){
   const struct=[1,3,3,3,2,3,3,3,2,2,2,2,1,1,1,1];
@@ -869,6 +881,7 @@ export default function ComicSpire(){
   const[codexTab,setCodexTab]=useState('powers');
   const[pendingBattle,setPendingBattle]=useState(null);
   const enemyCache=useRef({});
+  const firstBattleSpawnedRef=useRef(false);
   const[rewardPhase,setRewardPhase]=useState('absorb');
   const[rewardRelics,setRewardRelics]=useState([]);
   const[rewardCards,setRewardCards]=useState([]);
@@ -1091,6 +1104,7 @@ export default function ComicSpire(){
     setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
     setPotLv(1);setNgPlus(0);setCopiedAbilities([]);setRelics([]);setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
     enemyCache.current={};
+    firstBattleSpawnedRef.current=false;
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
     setMapLog(['Find a route through the unknown city. Branches lock in for 3 floors.']);setScreen('openingCinematic');
   },[audio]);
@@ -1101,6 +1115,7 @@ export default function ComicSpire(){
     setAttrPoints(0);
     setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
     enemyCache.current={};
+    firstBattleSpawnedRef.current=false;
     // Full HP restore as reward for completing the run
     setPlayer(p=>p?{...p,hp:p.maxHp}:p);
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
@@ -1168,7 +1183,11 @@ export default function ComicSpire(){
     if(!cur?.conns?.includes(nodeId)&&f!==0)return;const node=hexMap[f][i];
     audio.unlock();audio.playSelect();
     if(['battle','elite','boss'].includes(node.type)){
-      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus);
+      if(!enemyCache.current[nodeId]){
+        const avoidDefensiveOpen=!firstBattleSpawnedRef.current&&node.type==='battle';
+        enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus,{avoidDefensive:avoidDefensiveOpen});
+        firstBattleSpawnedRef.current=true;
+      }
       setPendingBattle({nodeId,en:enemyCache.current[nodeId]});return;}
     setHexMap(prev=>prev.map((row,fi)=>fi===f?row.map(n=>n.id===nodeId?{...n,visited:true}:n):row));setCurFloor(f);setCurNodeId(nodeId);
     if(node.type==='shop'){
@@ -1270,7 +1289,11 @@ export default function ComicSpire(){
     setHexMap(prev=>prev.map((row,fi)=>fi===f?row.map(n=>n.id===nodeId?{...n,visited:true}:n):row));
     setCurFloor(f);setCurNodeId(nodeId);
     if(['battle','elite','boss'].includes(node.type)){
-      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus);
+      if(!enemyCache.current[nodeId]){
+        const avoidDefensiveOpen=!firstBattleSpawnedRef.current&&node.type==='battle';
+        enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus,{avoidDefensive:avoidDefensiveOpen});
+        firstBattleSpawnedRef.current=true;
+      }
       setPendingBattle({nodeId,en:enemyCache.current[nodeId]});setScreen('map');return;
     }
     if(node.type==='shop'){
