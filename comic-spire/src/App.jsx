@@ -884,7 +884,7 @@ export default function ComicSpire(){
     }
     if(screen==='openingCinematic'){
       window.scrollTo({top:0});
-      const DURATION=5200;
+      const DURATION=2800;
       let start=null;let raf=null;
       const step=ts=>{
         if(!start)start=ts;
@@ -1794,7 +1794,7 @@ export default function ComicSpire(){
     const allPageCards=[...battle.placedCards,...battle.pendingCharges,...battle.activeCharges];
 
     return (
-      <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:0.9}}>
+      <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:1.3}}>
         <style>{CSS}</style><DebugPanel/><TooltipOverlay/><AlignNotif/>
         {slatePreview!==null&&(()=>{
           const{cards,variant}=slatePreview;
