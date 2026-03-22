@@ -42,6 +42,7 @@ const AUDIO_PATHS = {
       neutral: ["/assets/victory_hero1.mp3", "/assets/victory_villain.mp3"],
     },
   },
+  turnEnd: ["/assets/turn_end1.ogg", "/assets/turn_end2.ogg", "/assets/turn_end3.ogg"],
   select: "/assets/card_select.ogg",
   draw: "/assets/card_draw.ogg",
   placeDefault: "/assets/attack_punch.ogg",
@@ -179,11 +180,25 @@ export function createAudioSystem(config = AUDIO_PATHS) {
       if (!path) return;
       playSfx(path, 0.85);
     },
+    // Play a jingle as a non-looping BGM track so it can be interrupted by the next playMenuBgm/playCombatBgm call.
+    playJingleBgm(kind, alignment = "neutral") {
+      const path = pickForAlignment(config.jingles?.[kind], alignment);
+      if (!path) return;
+      if (bgm) { bgm.pause(); }
+      bgm = makeClip(path, { loop: false, volume: 0.75 });
+      bgm.onerror = () => { bgm = null; bgmPath = null; };
+      bgmPath = path;
+      bgm.muted = muted;
+      bgm.play().catch(() => {});
+    },
     stopBgm() {
       if (!bgm) return;
       bgm.pause();
       bgm.currentTime = 0;
       bgmPath = null;
+    },
+    playTurnEnd() {
+      playSfx(pickOne(config.turnEnd), 0.9);
     },
     playSelect() {
       playSfx(config.select, 0.85);

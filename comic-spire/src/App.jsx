@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
+import { createPortal } from "react-dom";
 import { createAudioSystem } from "./audio";
 
 /* ═══════════════════════════════════════════════════════
@@ -810,6 +811,7 @@ export default function ComicSpire(){
   const[hexMap,setHexMap]=useState(null);
   const[curFloor,setCurFloor]=useState(0);
   const[curNodeId,setCurNodeId]=useState(null);
+  const[debugMode,setDebugMode]=useState(false);
   const[shopItems,setShopItems]=useState([]);
   const[shopRelics,setShopRelics]=useState([]);
   const[curEvent,setCurEvent]=useState(null);
@@ -928,18 +930,17 @@ export default function ComicSpire(){
   useEffect(()=>{
     const enteredScreen=prevScreenRef.current!==screen;
     const alignChanged=prevMusicAlignRef.current!==alignment;
-
     audio.unlock();
     if(screen==='battle'){
       if(enteredScreen)audio.playCombatBgm(alignment);
+    }else if(screen==='victory'){
+      // stop BGM so victory jingle plays cleanly without overlap
+      if(enteredScreen){audio.playJingleBgm('victory',alignment);}
+    }else if(screen==='shop'){
+      // BGM already stopped by selectNode before playJingle; don't restart menu BGM here
     }else if(enteredScreen||alignChanged){
       audio.playMenuBgm(alignment);
     }
-
-    if(enteredScreen&&screen==='victory'){
-      audio.playJingle('victory',alignment);
-    }
-
     prevScreenRef.current=screen;
     prevMusicAlignRef.current=alignment;
   },[screen,alignment,audio]);
@@ -992,7 +993,7 @@ export default function ComicSpire(){
       if(cardData.length>0){
         const slateVariant=pick(['Bubble','Brutal','Action']);
         audio.unlock();
-        audio.playPlace('charge');
+        audio.playTurnEnd();
         setSlatePreview({cards:cardData,variant:slateVariant});
         setTimeout(()=>setSlatePreview(null),900);
       }
@@ -1010,7 +1011,7 @@ export default function ComicSpire(){
     audio.unlock();
     audio.startBgm();
     setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,def:2,Power:40,Strength:40,Magic:40,Intelligence:40,Speed:40,Defense:40,Poison:40,Rage:40,attrs:{Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0}});
-    setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
+    setDeck(makeStarterDeck());setGold(25);setEvilness(99);setMaxEnergy(3);
     setPotLv(1);setNgPlus(0);setCopiedAbilities([]);setRelics([]);setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
     enemyCache.current={};
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
@@ -1073,7 +1074,7 @@ export default function ComicSpire(){
       const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       const slateVariant=pick(['Bubble','Brutal','Action']);
       audio.unlock();
-      audio.playPlace('charge');
+      audio.playTurnEnd();
       setSlatePreview({cards:cardData,variant:slateVariant});
       setTimeout(()=>setSlatePreview(null),1500);
     }
@@ -1102,7 +1103,7 @@ export default function ComicSpire(){
       setShopItems(shuffle(shopPool).slice(0,4).map(h=>{const s=getSignature(h);s.price=Math.floor(18+s.tier*12+s.value);return s;}));
       const alignedRelics=ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id)&&(r.alignBias==='any'||r.alignBias===al||!r.alignBias));
       setShopRelics(shuffle(alignedRelics.length>=2?alignedRelics:ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id))).slice(0,2).map(r=>({...r,price:r.syn==='any'?30:45})));
-      audio.playJingle('shop',al);
+      audio.playJingleBgm('shop',al);
       setScreen('shop');}
     else if(node.type==='event'){
       const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
@@ -1118,6 +1119,40 @@ export default function ComicSpire(){
     }
     else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';audio.playJingle('rest',al);setRestPopup({hp:h});}
   },[audio,hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus,evilness]);
+
+  // ── DEBUG ──
+  useEffect(()=>{const h=e=>{if(e.key==='`')setDebugMode(p=>!p);};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[]);
+  const debugTravelTo=useCallback(nodeId=>{
+    if(!hexMap)return;
+    const[f,i]=nodeId.split('-').map(Number);
+    const node=hexMap[f]?.[i];if(!node)return;
+    setHexMap(prev=>prev.map((row,fi)=>fi===f?row.map(n=>n.id===nodeId?{...n,visited:true}:n):row));
+    setCurFloor(f);setCurNodeId(nodeId);
+    if(['battle','elite','boss'].includes(node.type)){
+      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus);
+      setPendingBattle({nodeId,en:enemyCache.current[nodeId]});setScreen('map');return;
+    }
+    if(node.type==='shop'){
+      const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+      let shopPool=heroes;
+      if(al==='hero')shopPool=heroes.filter(h=>h.isVillain!=='True');
+      else if(al==='villain')shopPool=heroes.filter(h=>h.isVillain==='True');
+      if(shopPool.length<4)shopPool=heroes;
+      setShopItems(shuffle(shopPool).slice(0,4).map(h=>{const s=getSignature(h);s.price=Math.floor(18+s.tier*12+s.value);return s;}));
+      const al2=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+      const alignedRelics=ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id)&&(r.alignBias==='any'||r.alignBias===al2||!r.alignBias));
+      setShopRelics(shuffle(alignedRelics.length>=2?alignedRelics:ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id))).slice(0,2).map(r=>({...r,price:r.syn==='any'?30:45})));
+      setScreen('shop');
+    } else if(node.type==='event'){
+      const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+      const neutralEvents=EVENTS.slice(0,5);const heroEvents=EVENTS.slice(5,9);const villainEvents=EVENTS.slice(9,13);
+      let pool=neutralEvents;
+      if(al==='hero')pool=[...neutralEvents,...neutralEvents,...heroEvents];
+      else if(al==='villain')pool=[...neutralEvents,...neutralEvents,...villainEvents];
+      else pool=[...neutralEvents,...heroEvents.slice(0,2),...villainEvents.slice(0,2)];
+      setCurEvent(pick(pool));setScreen('event');
+    } else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});setScreen('map');}
+  },[hexMap,heroes,relics,player,evilness,ngPlus]);
 
   const handleEvent=useCallback(opt=>{
     const cp=deck.filter(c=>c.copiedFrom);
@@ -1199,10 +1234,75 @@ export default function ComicSpire(){
       <div style={{fontSize:8,color:'#555',marginTop:4,textAlign:'right'}}>tap to dismiss</div>
     </div>;};
 
+  // ═══ DEBUG PANEL (portal — floats over any screen) ═══
+  const NC_DBG={battle:'#ff4455',elite:'#ff3366',boss:'#ffd700',rest:'#44dd66',shop:'#ffaa33',event:'#aa66ff'};
+  const DebugPanel=()=>{if(!debugMode||!player)return null;
+    return createPortal(
+      <div style={{position:'fixed',top:0,right:0,width:300,maxHeight:'100vh',overflowY:'auto',background:'#07050eee',border:'1px solid #ffaa3344',borderRadius:'0 0 0 10px',padding:12,fontFamily:FB,fontSize:11,color:'#ccc',zIndex:99999,boxSizing:'border-box'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,borderBottom:'1px solid #ffaa3322',paddingBottom:6}}>
+          <span style={{fontFamily:FD,fontSize:13,color:'#ffaa33',letterSpacing:2}}>⚙ DEBUG</span>
+          <span style={{fontFamily:FB,fontSize:9,color:'#555'}}>` to toggle · {screen}</span>
+        </div>
+        <div style={{marginBottom:10}}>
+          <div style={{fontFamily:FD,fontSize:10,color:'#ffaa33',letterSpacing:2,marginBottom:6}}>PLAYER STATS</div>
+          {[['HP','hp',1,player.maxHp],['Max HP','maxHp',10,300],['Defense','def',0,20]].map(([label,key,min,max])=>(
+            <div key={key} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+              <span style={{width:52,color:'#888'}}>{label}</span>
+              <input type='range' min={min} max={max} value={player[key]||0} onChange={e=>setPlayer(p=>({...p,[key]:Number(e.target.value)}))} style={{flex:1,accentColor:'#ffaa33'}}/>
+              <span style={{width:28,textAlign:'right',color:'#fff'}}>{player[key]||0}</span>
+            </div>
+          ))}
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+            <span style={{width:52,color:'#888'}}>Gold</span>
+            <input type='range' min={0} max={500} value={gold} onChange={e=>setGold(Number(e.target.value))} style={{flex:1,accentColor:'#ffd700'}}/>
+            <span style={{width:28,textAlign:'right',color:'#fff'}}>{gold}</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+            <span style={{width:52,color:'#888'}}>Energy</span>
+            <div style={{display:'flex',gap:3}}>
+              {[1,2,3,4,5].map(v=>(
+                <button key={v} onClick={()=>setMaxEnergy(v)} style={{padding:'2px 7px',fontFamily:FD,fontSize:11,background:maxEnergy===v?'#ffaa33':'#1a1a2a',border:`1px solid ${maxEnergy===v?'#ffaa33':'#333'}`,borderRadius:3,color:maxEnergy===v?'#000':'#666',cursor:'pointer'}}>{v}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:5}}>
+            <button onClick={()=>setPlayer(p=>({...p,hp:p.maxHp}))} style={{flex:1,padding:'4px',fontFamily:FD,fontSize:10,background:'#1a2a1a',border:'1px solid #44dd6644',borderRadius:3,color:'#44dd66',cursor:'pointer'}}>FULL HP</button>
+            <button onClick={()=>setAttrPoints(p=>p+8)} style={{flex:1,padding:'4px',fontFamily:FD,fontSize:10,background:'#1a1a2a',border:'1px solid #ffaa3344',borderRadius:3,color:'#ffaa33',cursor:'pointer'}}>+8 ATTR</button>
+            <button onClick={()=>setGold(p=>p+100)} style={{flex:1,padding:'4px',fontFamily:FD,fontSize:10,background:'#1a1a1a',border:'1px solid #ffd70044',borderRadius:3,color:'#ffd700',cursor:'pointer'}}>+100G</button>
+          </div>
+        </div>
+        {hexMap&&<div style={{marginBottom:10}}>
+          <div style={{fontFamily:FD,fontSize:10,color:'#ffaa33',letterSpacing:2,marginBottom:6}}>NODE TELEPORT</div>
+          <div style={{maxHeight:240,overflowY:'auto',display:'flex',flexDirection:'column',gap:3}}>
+            {hexMap.map((row,fi)=>(
+              <div key={fi}>
+                <div style={{fontFamily:FD,fontSize:8,color:'#444',letterSpacing:2,margin:'4px 0 2px'}}>FLOOR {fi}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                  {row.map(node=>{const isCur=node.id===curNodeId;const col=NC_DBG[node.type]||'#666';
+                    return <button key={node.id} onClick={()=>{debugTravelTo(node.id);setDebugMode(false);}} style={{padding:'2px 7px',fontFamily:FB,fontSize:9,background:isCur?`${col}33`:'#111',border:`1px solid ${isCur?col:col+'44'}`,borderRadius:3,color:isCur?col:`${col}99`,cursor:'pointer'}}>
+                      {node.type}{isCur?' ◀':''}
+                    </button>;
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>}
+        <div style={{borderTop:'1px solid #ffaa3322',paddingTop:8}}>
+          <div style={{fontFamily:FD,fontSize:10,color:'#ffaa33',letterSpacing:2,marginBottom:6}}>JUMP TO SCREEN</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+            {['title','map','battle','battleWin','reward','shop','event','gameOver','victory'].map(s=>(
+              <button key={s} onClick={()=>setScreen(s)} style={{padding:'2px 7px',fontFamily:FB,fontSize:9,background:screen===s?'#ffaa3322':'#111',border:`1px solid ${screen===s?'#ffaa33':'#333'}`,borderRadius:3,color:screen===s?'#ffaa33':'#555',cursor:'pointer'}}>{s}</button>
+            ))}
+          </div>
+        </div>
+      </div>,
+    document.body);};
+
   // ═══ TITLE ═══
   if(screen==='title')return (
     <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
-      <style>{CSS}</style>
+      <style>{CSS}</style><DebugPanel/>
       {/* deep radial atmosphere */}
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 90% 70% at 50% 45%,#200840 0%,#0a0118 55%,#000 100%)',pointerEvents:'none'}}/>
       {/* dot halftone overlay */}
@@ -1285,7 +1385,7 @@ export default function ComicSpire(){
   // ═══ OPENING CINEMATIC ═══
   if(screen==='openingCinematic')return (
     <div style={{minHeight:'200vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',fontFamily:FB,color:'#fff',padding:'60px 16px 40px',position:'relative',overflow:'hidden'}}>
-      <style>{CSS}</style>
+      <style>{CSS}</style><DebugPanel/>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,#ffffff12 0%,#000000c0 70%,#000 100%)',pointerEvents:'none'}}/>
       <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:760,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
         <div style={{fontFamily:FD,fontSize:'clamp(24px,4vw,34px)',color:'#ffd46b',letterSpacing:3,textShadow:'0 2px 0 #000,0 0 18px #ffbb5566',textAlign:'center'}}>ORIGIN AWAKENING</div>
@@ -1304,7 +1404,7 @@ export default function ComicSpire(){
   // ═══ MAP ═══
   if(screen==='map')return (
     <div style={{minHeight:'100vh',background:bg1,padding:12,fontFamily:FB,color:'#fff'}}>
-      <style>{CSS}</style><TooltipOverlay/><AlignNotif/>
+      <style>{CSS}</style><DebugPanel/><TooltipOverlay/><AlignNotif/>
       {restPopup&&<div style={{position:'fixed',inset:0,background:'#000b',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}}>
         <div style={{background:'#0d1a0d',border:'2px solid #66bb66',borderRadius:12,padding:'24px 32px',textAlign:'center',boxShadow:'0 0 40px #66bb6644'}}>
           <div style={{fontSize:36,marginBottom:8}}>🏕️</div>
@@ -1471,7 +1571,7 @@ export default function ComicSpire(){
     const goldEarned=15+curFloor*3+(isBoss?50:isElite?20:0);
     return (
       <div style={{minHeight:'100vh',background:bg1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',fontFamily:FB,color:'#fff',padding:'16px 12px',boxSizing:'border-box',overflowY:'auto'}}>
-        <style>{CSS}</style>
+        <style>{CSS}</style><DebugPanel/>
         {/* Header */}
         <div style={{textAlign:'center',marginBottom:12,marginTop:8}}>
           <div style={{fontFamily:FD,fontSize:32,color:typeColor,textShadow:`3px 3px 0 #000`,letterSpacing:2}}>{typeLabel}</div>
@@ -1545,7 +1645,7 @@ export default function ComicSpire(){
 
     return (
       <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:0.9}}>
-        <style>{CSS}</style><TooltipOverlay/><AlignNotif/>
+        <style>{CSS}</style><DebugPanel/><TooltipOverlay/><AlignNotif/>
         {slatePreview!==null&&(()=>{
           const{cards,variant}=slatePreview;
           const previewCards=(cards||[]).slice(0,4);
@@ -1795,7 +1895,7 @@ export default function ComicSpire(){
       const doAbsorbDone=()=>{setSelectedAbsorbCard(null);setRewardPhase('relic');};
       return (
       <div style={{minHeight:'100vh',background:bg1,padding:'12px 16px',fontFamily:FB,color:'#fff',overflowY:'auto'}}>
-        <style>{CSS}</style><TooltipOverlay/>
+        <style>{CSS}</style><DebugPanel/><TooltipOverlay/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
           <h2 style={{fontFamily:FD,fontSize:18,color:'#ffd700',margin:0}}>🏆 {enName} Defeated!</h2>
           <button onClick={doAbsorbDone} style={{fontFamily:FD,fontSize:11,padding:'5px 14px',background:'linear-gradient(135deg,#ffaa33,#ff6600)',border:'2px solid #fff',borderRadius:6,color:'#fff',cursor:'pointer'}}>
@@ -1821,7 +1921,7 @@ export default function ComicSpire(){
                 const isSig=i===0;
                 return <div key={c.id} style={{position:'relative',width:'max-content',justifySelf:'center',opacity:taken?0.3:1,transition:'opacity 0.3s',borderRadius:8,boxShadow:isSig&&!taken?'0 0 0 2px #ffd700aa, 0 0 16px #ffd70088':'none'}}>
                   {taken&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2,fontFamily:FD,fontSize:20,pointerEvents:'none'}}>✓</div>}
-                  <Card card={c} sel={isSel} dis={taken} onClick={taken?undefined:()=>setSelectedAbsorbCard(isSel?null:c)}/>
+                  <Card card={c} sel={isSel} dis={taken} onClick={taken?undefined:()=>{audio.unlock();audio.playSelect();setSelectedAbsorbCard(isSel?null:c);}}/>
                 </div>;})}
             </div>
           </div>
@@ -1862,7 +1962,7 @@ export default function ComicSpire(){
 
     if(rewardPhase==='relic')return (
       <div style={{minHeight:'100vh',background:bg1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:16,fontFamily:FB,color:'#fff'}}>
-        <style>{CSS}</style><TooltipOverlay/>
+        <style>{CSS}</style><DebugPanel/><TooltipOverlay/>
         <h2 style={{fontFamily:FD,fontSize:18,color:'#ffaa33',marginBottom:8}}>🎁 PICK AN AMP (1 of 3)</h2>
         <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>
           {rewardRelics.map((r,i)=> <div key={r.id} style={{animation:`fadeUp 0.3s ${i*0.1}s ease both`,opacity:0}}><Relic relic={r} onClick={rel=>pickRewardRelic(rel)}/></div>)}
@@ -1875,7 +1975,7 @@ export default function ComicSpire(){
   }
 
   if(screen==='shop')return (
-    <div style={{minHeight:'100vh',background:bg1,padding:16,fontFamily:FB,color:'#fff'}}><style>{CSS}</style><TooltipOverlay/>
+    <div style={{minHeight:'100vh',background:bg1,padding:16,fontFamily:FB,color:'#fff'}}><style>{CSS}</style><DebugPanel/><TooltipOverlay/>
     <h2 style={{fontFamily:FD,fontSize:22,textAlign:'center',color:'#ffd700'}}>🛒 SHOP</h2>
     <div style={{textAlign:'center',fontFamily:FD,fontSize:14,color:'#ffd700',marginBottom:10}}>💰{gold}</div>
     <div style={{fontFamily:FD,fontSize:12,color:'#777',textAlign:'center',marginBottom:6}}>SUPERPOWERS</div>
@@ -1911,7 +2011,7 @@ export default function ComicSpire(){
       if(o.fx==='remove'&&!rmCard)return`🗑️ Remove a basic superpower (none available)`;
       return o.text;};
     return (
-    <div style={{minHeight:'100vh',background:bg1,display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:FB,color:'#fff'}}><style>{CSS}</style>
+    <div style={{minHeight:'100vh',background:bg1,display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:FB,color:'#fff'}}><style>{CSS}</style><DebugPanel/>
     <div style={{maxWidth:360,background:bg2,border:`1.5px solid ${accent}44`,borderRadius:10,padding:18,textAlign:'center',animation:'fadeUp 0.3s'}}>
       <div style={{fontSize:24,marginBottom:3}}>❓</div>
       <h2 style={{fontFamily:FD,fontSize:18,color:accent,marginBottom:8}}>{curEvent.title}</h2>
@@ -2077,7 +2177,7 @@ export default function ComicSpire(){
     const isFirst=tutStep===0;
     return (
       <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative',padding:20,boxSizing:'border-box'}}>
-        <style>{CSS}</style>
+        <style>{CSS}</style><DebugPanel/>
         <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 80% 60% at 50% 40%,#1a0840 0%,#060110 55%,#000 100%)',pointerEvents:'none'}}/>
         <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff06 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
 
@@ -2142,7 +2242,7 @@ export default function ComicSpire(){
 
   if(screen==='gameOver')return (
     <div style={{minHeight:'100vh',background:'#02000a',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
-      <style>{CSS}</style>
+      <style>{CSS}</style><DebugPanel/>
       {/* atmosphere */}
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 80% 60% at 50% 40%,#3a000a 0%,#0a0008 55%,#000 100%)',pointerEvents:'none'}}/>
       <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff05 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
@@ -2217,17 +2317,95 @@ export default function ComicSpire(){
     </div>);
 
   if(screen==='victory')return (
-    <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16,textAlign:'center'}}><style>{CSS}</style>
-    <div style={{fontSize:64,marginBottom:8,animation:'float 3s ease-in-out infinite'}}>🏆</div>
-    <h1 style={{fontSize:40,color:'#ffd700',textShadow:`4px 4px 0 ${accent},8px 8px 0 #000`,animation:'pulse 2s ease-in-out infinite',margin:'0 0 4px'}}>POTENTIAL REALIZED</h1>
-    {ngPlus>0&&<div style={{fontFamily:FD,fontSize:13,color:'#ffaa33',marginBottom:4}}>ASCENSION {ngPlus} CLEARED</div>}
-    <p style={{fontFamily:'Courier Prime,monospace',fontSize:13,color:'#aaa',marginBottom:4}}>{copiedAbilities.length} superpowers · {relics.length} Amps · Lv.{potLv}</p>
-    <p style={{fontFamily:FD,fontSize:13,color:alignColor,marginBottom:16}}>Victory as {alignLabel}</p>
-    <div style={{display:'flex',gap:10,flexWrap:'wrap',justifyContent:'center'}}>
-      {maxEnergy<5&&<button onClick={()=>startNewGamePlus(ngPlus)} style={{fontFamily:FD,fontSize:15,padding:'10px 28px',background:`linear-gradient(135deg,#aa44ff,#ff3366)`,border:'3px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer',boxShadow:'0 0 30px #aa44ff55'}}>⚡ ASCEND ({ngPlus+1}+)<br/><span style={{fontSize:10,opacity:0.8}}>Keep build · +{Math.round((ngPlus+1)*35)}% enemy scaling</span></button>}
-      <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:14,padding:'10px 28px',background:`linear-gradient(135deg,#ffd700,${accent})`,border:'2px solid #fff',borderRadius:8,color:'#000',cursor:'pointer'}}>NEW RUN</button>
-    </div>
-  </div>);
+    <div style={{minHeight:'100vh',background:'#020a05',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}><style>{CSS}</style><DebugPanel/>
+      {/* atmosphere */}
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 80% 60% at 50% 40%,#1a3a08 0%,#071202 55%,#000 100%)',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff05 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',left:0,right:0,height:80,background:'linear-gradient(180deg,transparent,#ffdd0006,transparent)',animation:'scanline 7s linear infinite',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',width:560,height:560,border:'1px solid #ffd70022',borderRadius:'50%',boxShadow:'0 0 100px #aaff0018,inset 0 0 100px #ffd70010',animation:'pulse 5s ease-in-out infinite',pointerEvents:'none'}}/>
+
+      {/* content */}
+      <div style={{position:'relative',zIndex:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
+        <div style={{fontSize:72,marginBottom:16,filter:'drop-shadow(0 0 24px #ffd70088)',animation:'float 4s ease-in-out infinite'}}>🏆</div>
+
+        {/* title */}
+        <div style={{fontSize:'clamp(38px,8vw,80px)',lineHeight:0.9,fontFamily:FD,letterSpacing:4,
+          background:'linear-gradient(170deg,#fff 0%,#fffaaa 30%,#ffd700 65%,#ff9900 100%)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 24px #ffd70055) drop-shadow(3px 5px 0 #000)',
+          animation:'fadeUp 0.5s ease both,pulse 5s 0.5s ease-in-out infinite',
+          marginBottom:4}}>
+          POTENTIAL
+        </div>
+        <div style={{fontSize:'clamp(38px,8vw,80px)',lineHeight:0.9,fontFamily:FD,letterSpacing:4,
+          background:'linear-gradient(170deg,#fff 0%,#fffaaa 30%,#ffd700 65%,#ff9900 100%)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 24px #ffd70055) drop-shadow(3px 5px 0 #000)',
+          animation:'fadeUp 0.5s 0.08s ease both',
+          marginBottom:20}}>
+          REALIZED
+        </div>
+
+        {/* character image */}
+        <div style={{animation:'fadeUp 0.6s 0.12s ease both',opacity:0,marginBottom:16}}>
+          <img
+            src={alignment==='villain'?'/assets/evil.png':'/assets/good_neutral.png'}
+            alt={alignment==='villain'?'Potential Man — Villain':'Potential Man — Hero'}
+            style={{
+              width: alignment==='villain'?180:220,
+              maxWidth:'80vw',
+              borderRadius:8,
+              imageRendering:'pixelated',
+              border:`2px solid ${alignment==='villain'?'#aa44ff44':'#ffd70044'}`,
+              boxShadow:`0 0 40px ${alignment==='villain'?'#aa44ff33':'#ffd70033'}`,
+            }}
+          />
+        </div>
+
+        {/* ascension badge */}
+        {ngPlus>0&&<div style={{fontFamily:FD,fontSize:12,color:'#ffaa33',letterSpacing:4,border:'1px solid #ffaa3344',borderRadius:3,padding:'3px 14px',marginBottom:12,animation:'fadeUp 0.4s 0.22s ease both',opacity:0}}>ASCENSION {ngPlus} CLEARED</div>}
+
+        {/* divider */}
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16,animation:'fadeUp 0.4s 0.28s ease both',opacity:0}}>
+          <div style={{width:50,height:1,background:`linear-gradient(90deg,transparent,${alignment==='villain'?'#aa44ff66':'#ffd70066'})`}}/>
+          <span style={{fontFamily:FB,fontSize:10,letterSpacing:5,color:alignment==='villain'?'#aa44ff66':'#ffd70066',textTransform:'uppercase'}}>{alignment==='villain'?'The City falls':'The City is safe'}</span>
+          <div style={{width:50,height:1,background:`linear-gradient(270deg,transparent,${alignment==='villain'?'#aa44ff66':'#ffd70066'})`}}/>
+        </div>
+
+        {/* stats grid */}
+        <div style={{display:'flex',gap:24,marginBottom:8,animation:'fadeUp 0.4s 0.28s ease both',opacity:0}}>
+          {[['🏢','Floor',curFloor],['⚡','Powers',copiedAbilities.length],['🎒','Amps',relics.length],['⚔️','Level',potLv]].map(([icon,label,val])=>(
+            <div key={label} style={{textAlign:'center'}}>
+              <div style={{fontSize:18}}>{icon}</div>
+              <div style={{fontFamily:FD,fontSize:20,color:'#fff'}}>{val}</div>
+              <div style={{fontFamily:FB,fontSize:10,color:'#555',letterSpacing:2,textTransform:'uppercase'}}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* alignment */}
+        <div style={{fontFamily:FB,fontSize:12,color:alignColor,marginBottom:32,letterSpacing:2,animation:'fadeUp 0.4s 0.34s ease both',opacity:0}}>
+          Victory as {alignLabel}
+        </div>
+
+        {/* buttons */}
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,animation:'fadeUp 0.4s 0.42s ease both',opacity:0}}>
+          {maxEnergy<5&&<button onClick={()=>startNewGamePlus(ngPlus)} style={{fontFamily:FD,fontSize:16,padding:'13px 40px',
+            background:'linear-gradient(135deg,#aa44ff,#ff3366)',
+            border:'none',borderRadius:3,color:'#fff',cursor:'pointer',letterSpacing:3,
+            boxShadow:'0 0 40px #aa44ff44,0 4px 0 #550088,0 8px 20px #00000066',
+            animation:'float 3s 0.8s ease-in-out infinite'}}>
+            ⚡ ASCEND ({ngPlus+1}+)
+            <div style={{fontSize:10,opacity:0.7,letterSpacing:1,marginTop:2}}>Keep build · +{Math.round((ngPlus+1)*35)}% enemy scaling</div>
+          </button>}
+          <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:14,padding:'11px 40px',
+            background:'transparent',border:'1px solid #ffd70044',borderRadius:3,
+            color:'#ffd700aa',cursor:'pointer',letterSpacing:3}}>
+            NEW RUN
+          </button>
+        </div>
+      </div>
+    </div>);
 
   return null;
 }
