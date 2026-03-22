@@ -19,18 +19,6 @@ const SK=['Power','Strength','Magic','Intelligence','Speed','Defense','Poison','
 
 const ROWS=2,COLS=2;
 const TOTAL_PANELS=ROWS*COLS;
-const PLAYER_PANEL_ASSETS=[
-  '/assets/Bubble_Comic_Slate_1.png',
-  '/assets/Bubble_Comic_Slate_2.png',
-  '/assets/Bubble_Comic_Slate_3.png',
-  '/assets/Bubble_Comic_Slate_4.png',
-];
-const ENEMY_PANEL_ASSETS=[
-  '/assets/Brutal_Comic_Slate_1.png',
-  '/assets/Brutal_Comic_Slate_2.png',
-  '/assets/Brutal_Comic_Slate_3.png',
-  '/assets/Brutal_Comic_Slate_4.png',
-];
 
 function panelSpanForCard(card){
   const energyCost=(card.keyword==='blood'||card.keyword==='frenzy')?1:Math.max(1,card.cost||1);
@@ -51,8 +39,42 @@ function getIntentVisibility(speed){
   return clamp(1+Math.floor((speed||0)/30),1,4);
 }
 
+function cardToIntent(card,en){
+  const hits=card.hits||1;
+  const str=$(en.Strength||0),pow=$(en.Power||0),mag=$(en.Magic||0);
+  const intel=$(en.Intelligence||0),def=$(en.Defense||0),poi=$(en.Poison||0);
+  const atkMult=1+(str*0.003+pow*0.002);
+  const magMult=1+(mag*0.003+intel*0.002);
+  const defMult=1+def*0.004;
+  const poiMult=1+poi*0.005;
+  switch(card.type){
+    case 'attack':case 'rage':{
+      if(card.keyword==='shieldbash')return{...card,intent:'shieldbash',intentVal:Math.max(0,en.block||0)};
+      if(card.keyword==='catalyze')return{...card,intent:'catalyze',intentVal:en.poisonStacks||0};
+      const val=Math.max(1,Math.floor(card.value*atkMult))*hits;
+      return{...card,intent:'attack',intentVal:val};
+    }
+    case 'magic':{
+      const val=Math.max(1,Math.floor(card.value*magMult));
+      if(card.keyword==='channel'||card.keyword==='overchannel')return{...card,intent:'channel',intentVal:val};
+      return{...card,intent:'magic',intentVal:val};
+    }
+    case 'defend':return{...card,intent:'defend',intentVal:Math.max(1,Math.floor(card.value*defMult))};
+    case 'poison':{
+      const val=Math.max(1,Math.floor(card.value*poiMult));
+      if(card.keyword==='corrode'||card.keyword==='overchannel')return{...card,intent:'corrode',intentVal:val};
+      return{...card,intent:'poison',intentVal:val};
+    }
+    case 'heal':return{...card,intent:'heal',intentVal:Math.max(1,Math.floor(card.value*defMult))};
+    default:return{...card,intent:'buff',intentVal:Math.floor((en.atk||3)*0.15)+1};
+  }
+}
 function makeEnemyPlan(en){
-  return Array.from({length:TOTAL_PANELS},()=>rollIntent(en));
+  if(!en.deck||en.deck.length===0)return Array.from({length:TOTAL_PANELS},()=>rollIntent(en));
+  const shuffled=shuffle([...en.deck]);
+  const planCards=[];
+  while(planCards.length<TOTAL_PANELS)planCards.push(...shuffled.slice(0,TOTAL_PANELS-planCards.length));
+  return planCards.slice(0,TOTAL_PANELS).map(card=>cardToIntent(card,en));
 }
 
 // ═══ KEYWORD DEFINITIONS (shown on hover) ═══
@@ -62,7 +84,7 @@ const KW_INFO={
   momentum:{name:'MOMENTUM',color:'#33ddff',desc:'Each card played adds +1. At 4: ONE free card.'},
   fortify:{name:'FORTIFY',color:'#4499ff',desc:'50% of your Block carries over to next turn.'},
   corrode:{name:'CORRODE',color:'#44dd66',desc:'Poison that NEVER decays. Stacks permanently.'},
-  blood:{name:'BLOOD',color:'#ff7722',desc:'Costs HP instead of energy. Below 30% HP: DOUBLE damage.'},
+  blood:{name:'BLOOD',color:'#ff7722',desc:'Costs HP instead of energy. High-risk, high-reward strikes.'},
   charge:{name:'CHARGE',color:'#ffaa33',desc:'Doesn\'t resolve this turn. Fires NEXT turn at +50% power.'},
   echo:{name:'ECHO',color:'#dd88ff',desc:'When resolved, copies the PREVIOUS card\'s effect at 50%.'},
   shieldbash:{name:'SHIELD BASH',color:'#55aaff',desc:'Deals damage equal to your current Block.'},
@@ -138,38 +160,143 @@ function getSignature(hero){
 }
 
 function makeStarterDeck(){
-  const mk=(nm,d,t,ic,v)=>({id:uid(),name:nm,desc:d,type:t,icon:ic,value:v,cost:1,shape:'s1',panelSize:1,hits:1,debuff:0,keyword:'',bloodCost:0,charge:false,heroName:'Potential Man',color:'#888',tier:0,copiedFrom:null,threat:0,bestStat:null,archetype:''});
-  return[mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),
-    mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),
-    mk('Spark','Deal 3 magic','magic','🪞',3),mk('Adapt','Heal 4','heal','🔄',4),
-    mk('Rally','Draw 2 extra superpowers this turn','draw','📖',2)];
+  const mk=(nm,d,t,ic,v,kw='',cost=1)=>({id:uid(),name:nm,desc:d,type:t,icon:ic,value:v,cost,shape:'s1',panelSize:1,hits:1,debuff:0,keyword:kw,bloodCost:0,charge:false,heroName:'Potential Man',color:'#888',tier:0,copiedFrom:null,threat:0,bestStat:null,archetype:''});
+  return[
+    mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),mk('Punch','Deal 4','attack','👊',4),
+    mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),mk('Guard','Gain 4 Block','defend','🤲',4),
+    mk('Spark','Deal 3 magic (30% pierces block)','magic','✨',3),mk('Spark','Deal 3 magic (30% pierces block)','magic','✨',3),
+    mk('Adapt','Heal 4','heal','🔄',4),mk('Adapt','Heal 4','heal','🔄',4),
+    mk('Rally','Draw 2 extra superpowers next turn','draw','📖',2)];
 }
 
 function makeEnemy(hero,floor,isBoss,isElite){
   const stats={};SK.forEach(k=>stats[k]=$(hero[k]));const sorted=Object.values(stats).sort((a,b)=>b-a);
-  const threat=sorted[0]+sorted[1]+sorted[2];const m=isBoss?2.5:isElite?1.6:1+floor*0.1;
+  const threat=sorted[0]+sorted[1]+sorted[2];
+  // Classify based on threat vs floor-scaled thresholds — strong enemies in normal slots become sub-elite
+  const normalCeiling=135+floor*6;
+  const effectiveClass=isBoss?'boss':isElite?'elite':threat>normalCeiling*1.45?'elite':threat>normalCeiling*1.8?'boss':'normal';
+  // Floor-relative multiplier: elite is always 20% harder than normal, boss 40%; early floors get a soft nerf
+  const baseM=1+floor*0.1;
+  const earlyFactor=floor<3?0.65+floor*0.12:1.0;// floor0=0.65, floor1=0.77, floor2=0.89, floor3+=1.0
+  const typeM=effectiveClass==='boss'?1.4:effectiveClass==='elite'?1.2:1.0;
+  const m=baseM*typeM*earlyFactor;
   const hp=Math.floor((28+stats.Defense*0.25+stats.Strength*0.08)*m);
   return{...hero,gameHp:hp,gameMaxHp:hp,block:0,poisonStacks:0,corrodeStacks:0,weakened:0,
     atk:Math.floor(3+(stats.Strength*0.07+stats.Power*0.05)*m+floor*0.4),
     mag:Math.floor(2+(stats.Magic*0.06+stats.Intelligence*0.04)*m+floor*0.3),
-    def:Math.floor(stats.Defense*0.12*m+2),speed:stats.Speed,color:clr(hero.Favorite_Color),isBoss,isElite,threat,
-    intent:null,intentVal:0,signature:getSignature(hero)};
+    def:Math.floor(stats.Defense*0.12*m+2),speed:stats.Speed,color:clr(hero.Favorite_Color),
+    isBoss:effectiveClass==='boss',isElite:effectiveClass==='elite',effectiveClass,threat,
+    intent:null,intentVal:0,signature:getSignature(hero),deck:makeEnemyDeck(hero,floor)};
 }
+// ═══ ENEMY DECK — archetype-themed card pools ═══
+function makeEnemyDeck(hero,floor){
+  const stats={};SK.forEach(k=>stats[k]=$(hero[k]));
+  const sorted=Object.entries(stats).sort((a,b)=>b[1]-a[1]);
+  const best=sorted[0][0];
+  const hn=hero.Name,hc=clr(hero.Favorite_Color);
+  // Early floors get softened card values; later floors scale up normally
+  const earlyCardScale=floor<3?0.6+floor*0.13:1.0;// floor0=0.6, floor1=0.73, floor2=0.86, floor3+=1.0
+  const s=n=>Math.max(1,Math.floor(n*earlyCardScale*(1+floor*0.08)));
+  // mk: name, desc, type, icon, baseVal, keyword='', cost=1, hits=1, charge=false, bloodCost=0
+  const mk=(nm,d,t,ic,val,kw='',cost=1,hits=1,ch=false,bc=0)=>({
+    id:uid(),name:nm,desc:d,type:t,icon:ic,value:s(val),cost,shape:'s1',panelSize:1,
+    hits,debuff:0,keyword:kw,bloodCost:bc,charge:ch,
+    heroName:hn,color:hc,tier:1,copiedFrom:hn,threat:0,bestStat:best,archetype:best});
+
+  const sig=getSignature(hero);// always include the signature card in the deck pool
+
+  if(['Power','Strength'].includes(best))return[sig,
+    mk('Heavy Strike','Deal 8. COMBO +3 per hit','attack','💥',8,'combo'),
+    mk('Haymaker','Deal 12. COMBO +3','attack','👊',12,'combo'),
+    mk('War Cry','Deal 5, hits twice','attack','⚔️',5,'combo',1,2),
+    mk('Body Slam','Deal 10','attack','💢',10),
+    mk('Iron Will','Gain 8 Block','defend','🛡️',8),
+    mk('Shield Counter','Deal dmg = your Block. SHIELD BASH','attack','🏰',8,'shieldbash'),
+    mk('Berserker','Deal 12. BLOOD 5HP. 2× when low','rage','🔥',12,'blood',0,1,false,5),
+    mk('Charged Haymaker','⏳ Deal 20 next turn','attack','⚡',20,'combo',1,1,true)];
+
+  if(best==='Magic')return[sig,
+    mk('Mind Blast','CHANNEL 8: bursts EOT, pierces ALL block','magic','✨',8,'channel'),
+    mk('Psychic Wave','CHANNEL 12: bursts EOT + Weaken','magic','🌀',12,'channel'),
+    mk('Laser Burst','Deal 7 magic (30% pierces block)','magic','🔮',7),
+    mk('Reality Warp','ECHO: copies previous card at 50%','magic','🪞',3,'echo'),
+    mk('Arcane Shield','Gain 7 Block. FORTIFY 50% carries','defend','🔷',7,'fortify'),
+    mk('Focused Beam','⏳ CHANNEL 18 next turn — full pierce','magic','⚡',18,'channel',1,1,true),
+    mk('Overchannel','OVERCHANNEL 8: channels + corrodes 3','magic','🌀',8,'overchannel'),
+    mk('Solar Ray','Deal 6 magic laser (30% pierces)','magic','☀️',6)];
+
+  if(best==='Intelligence')return[sig,
+    mk('Aerial Strike','Deal 6 from above, then draw 1 next turn','attack','🦅',6),
+    mk('Wind Slash','Deal 5, hits twice — aerial agility','attack','💨',5,'momentum',1,2),
+    mk('Healing Wind','Heal 8 HP','heal','🌿',8),
+    mk('Tactical Read','Draw 2 extra superpowers next turn','draw','📖',2),
+    mk('Air Shield','Gain 8 Block. FORTIFY','defend','🌪️',8,'fortify'),
+    mk('Dive Bomb','⏳ Deal 16 next turn — fly-by strike','attack','🦅',16,'',1,1,true),
+    mk('Stratosphere','CHANNEL 10: altitude beam, full pierce','magic','☁️',10,'channel'),
+    mk('Recovery','Heal 6 HP + draw 1 next turn','heal','💚',6)];
+
+  if(best==='Speed')return[sig,
+    mk('Blitz','Deal 7×2. FRENZY — free, 2 slots','attack','⚡',7,'frenzy',0,2),
+    mk('Rapid Jabs','Deal 4, hits 3 times. COMBO','attack','👊',4,'combo',1,3),
+    mk('Dash Strike','Deal 10. MOMENTUM +1','attack','💨',10,'momentum'),
+    mk('Phase Shift','Gain 6 Block. MOMENTUM +1','defend','💨',6,'momentum'),
+    mk('Afterburn','Deal 8. COMBO +3','attack','🔥',8,'combo'),
+    mk('Lightning Reflexes','Gain 8 Block','defend','🛡️',8),
+    mk('Overdrive','⏳ Deal 16×2 next turn. MOMENTUM','attack','⚡',16,'momentum',1,2,true),
+    mk('Speed Blitz','Deal 5. FRENZY — free','attack','💥',5,'frenzy',0,1)];
+
+  if(best==='Defense')return[sig,
+    mk('Iron Wall','Gain 10 Block. FORTIFY 50% carries','defend','🏰',10,'fortify'),
+    mk('Fortress Mode','Gain 12 Block. FORTIFY','defend','🛡️',12,'fortify'),
+    mk('Shield Slam','Deal dmg = your Block. SHIELD BASH','attack','🏰',10,'shieldbash'),
+    mk('Bulwark','Gain 8 Block','defend','🔷',8),
+    mk('Counter Bash','Deal Block+5. SHIELD BASH','attack','🏰',12,'shieldbash'),
+    mk('Barrier','Gain 6 Block. FORTIFY','defend','🔵',6,'fortify'),
+    mk('Titan Guard','⏳ Gain 20 Block next turn. FORTIFY','defend','⚡',20,'fortify',1,1,true),
+    mk('Reactive Armor','Gain 8 Block. +2 Block per card played','defend','🛡️',8)];
+
+  if(best==='Poison')return[sig,
+    mk('Toxic Bite','CORRODE +5 permanent poison','poison','☠️',5,'corrode'),
+    mk('Venom Spit','Poison +8','poison','🐍',8),
+    mk('Plague Cloud','CORRODE +4 permanent','poison','☠️',4,'corrode'),
+    mk('Acid Splash','Deal 5 + Poison +4','attack','🧪',5),
+    mk('Catalyze','CATALYZE: deal dmg = enemy Poison stacks','attack','💀',0,'catalyze'),
+    mk('Toxic Shield','Gain 6 Block','defend','🛡️',6),
+    mk('Overchannel Venom','OVERCHANNEL 6: channels + corrodes 2','magic','🌀',6,'overchannel'),
+    mk('Corrosive Burst','⏳ CORRODE +10 next turn','poison','☠️',10,'corrode',1,1,true)];
+
+  // Rage / default archetype
+  return[sig,
+    mk('Blood Frenzy','Deal 12. BLOOD 5HP. 2× when low','rage','🔥',12,'blood',0,1,false,5),
+    mk('Desperate Strike','Deal 16. BLOOD 8HP. 2× when low','rage','💢',16,'blood',0,1,false,8),
+    mk('Rage Combo','Deal 8. COMBO +3','attack','😤',8,'combo'),
+    mk('Battle Roar','Gain 6 Block','defend','😤',6),
+    mk('Wild Swing','Deal 10×2. FRENZY — free','attack','💢',10,'frenzy',0,2),
+    mk('Pain to Power','Deal 10. BLOOD 3HP','rage','🔥',10,'blood',0,1,false,3),
+    mk('Berserker Charge','⏳ Deal 20. BLOOD 5HP next turn','rage','⚡',20,'blood',1,1,true,5),
+    mk('Fury Strike','Deal 6. COMBO +3','attack','💥',6,'combo')];}
+
 function rollIntent(en){const r=Math.random(),ac=0.45+$(en.Rage)/300;
   if(r<ac)return{intent:'attack',intentVal:Math.max(1,en.atk-(en.weakened||0))+Math.floor(Math.random()*3)};
   if(r<ac+0.2)return{intent:'magic',intentVal:Math.max(1,en.mag)+Math.floor(Math.random()*3)};
   if(r<ac+0.35)return{intent:'defend',intentVal:en.def+Math.floor(Math.random()*3)};
   return{intent:'buff',intentVal:Math.floor(en.atk*0.2)+2};}
-function pickEnemy(heroes,floor,isBoss,isElite){
-  const wt=heroes.map(h=>{const st={};SK.forEach(k=>st[k]=$(h[k]));const s=Object.values(st).sort((a,b)=>b-a);return{hero:h,threat:s[0]+s[1]+s[2]}}).sort((a,b)=>a.threat-b.threat);
+function pickEnemy(heroes,floor,isBoss,isElite,evilness=50){
+  // Heroes fight villains; villains fight heroes; neutral fights anyone
+  const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+  let pool=heroes;
+  if(al==='hero')pool=heroes.filter(h=>h.isVillain==='True');
+  else if(al==='villain')pool=heroes.filter(h=>h.isVillain!=='True');
+  if(pool.length<2)pool=heroes;// fallback if not enough typed heroes
+  const wt=pool.map(h=>{const st={};SK.forEach(k=>st[k]=$(h[k]));const s=Object.values(st).sort((a,b)=>b-a);return{hero:h,threat:s[0]+s[1]+s[2]}}).sort((a,b)=>a.threat-b.threat);
   const t=wt.length;let lo,hi;
   if(isBoss){lo=Math.floor(t*0.75);hi=t;}else if(isElite){lo=Math.floor(t*0.5);hi=Math.floor(t*0.85);}
-  else{const p=floor/14;lo=Math.floor(t*Math.max(0,p-0.2));hi=Math.floor(t*Math.min(1,p+0.3));}
+  else{const p=floor/14;const spread=floor<3?0.18:0.25;lo=Math.floor(t*Math.max(0,p-spread));hi=Math.floor(t*Math.min(0.7+p*0.3,p+spread));}
   return makeEnemy(pick(wt.slice(clamp(lo,0,t-1),clamp(hi,lo+1,t))).hero,floor,isBoss,isElite);}
 
 function makeMap(){
-  const struct=[1,3,3,3,1,3,3,3,1,2,2,2,1,1,1];
-  const mergeTypes=[null,null,null,null,['shop','rest','event'],null,null,null,['shop','rest','event'],null,null,null,['rest'],['elite'],['boss']];
+  const struct=[1,3,3,3,2,3,3,3,2,2,2,2,1,1,1];
+  const mergeTypes=[null,null,null,null,['shop','rest'],null,null,null,['shop','rest'],null,null,null,['rest'],['elite'],['boss']];
   const battleTypes=['battle','battle','battle','event','shop'];
   const map=[];
   for(let f=0;f<struct.length;f++){
@@ -188,34 +315,46 @@ function makeMap(){
   return map;}
 
 const EVENTS=[
+  // Classic neutral events
   {title:'Mysterious Stranger',opts:[{text:'💪 Upgrade a card',fx:'upgrade'},{text:'🗑️ Remove a basic card',fx:'remove'},{text:'💚 +10 HP',fx:'heal',v:10}]},
   {title:'Abandoned Lab',opts:[{text:'🔬 +1 energy',fx:'maxEn'},{text:'💰 +25 gold',fx:'gold',v:25},{text:'💚 +5 HP',fx:'heal',v:5}]},
   {title:'The Mirror',opts:[{text:'🪞 Duplicate best card',fx:'dupe'},{text:'🔄 Upgrade weakest',fx:'upWeak'},{text:'💚 +12 HP',fx:'heal',v:12}]},
+  {title:'Mysterious Signal',opts:[{text:'📡 Follow it — duplicate best card',fx:'dupe'},{text:'🔮 Ignore it — +20 gold',fx:'gold',v:20},{text:'💚 Rest — +15 HP',fx:'heal',v:15}]},
+  {title:'Temporal Rift',opts:[{text:'⏩ Leap forward — +1 energy',fx:'maxEn'},{text:'🔄 Rewind — upgrade weakest',fx:'upWeak',evil:-2},{text:'⚡ Absorb — +20 gold',fx:'gold',v:20,evil:2}]},
+  // Hero-leaning events
+  {title:'Wounded Civilian',opts:[{text:'🩹 Help them — +15 HP',fx:'heal',v:15,evil:-6},{text:'💰 Demand payment — +15 gold',fx:'gold',v:15,evil:4},{text:'🚶 Walk away',fx:'nothing',evil:2}]},
+  {title:'Hero Code',opts:[{text:'📖 Study heroics — upgrade a card',fx:'upgrade',evil:-5},{text:'🛒 Sell the book — +20 gold',fx:'gold',v:20,evil:3},{text:'🔥 Burn it — remove a basic',fx:'remove',evil:5}]},
+  {title:'Fan Encounter',opts:[{text:'✍️ Sign autograph — +10 gold',fx:'gold',v:10,evil:-3},{text:'😠 Brush them off',fx:'nothing',evil:0},{text:'💀 Intimidate them — +25 gold',fx:'gold',v:25,evil:6}]},
+  {title:'Crisis Hotline',opts:[{text:'🦸 Talk them down — +12 HP',fx:'heal',v:12,evil:-6},{text:'📵 Refuse the call',fx:'nothing',evil:3},{text:'💰 Send someone else — +20 gold',fx:'gold',v:20,evil:-2}]},
+  // Villain-leaning events
+  {title:"Villain's Cache",opts:[{text:'💰 Take the loot — +30 gold',fx:'gold',v:30,evil:7},{text:'🗑️ Destroy it — remove a basic',fx:'remove',evil:-5},{text:'🚶 Leave it',fx:'nothing',evil:0}]},
+  {title:'Dark Merchant',opts:[{text:'🛒 Buy contraband — +1 energy',fx:'maxEn',evil:6},{text:'🚔 Report them — +20 gold',fx:'gold',v:20,evil:-5},{text:'💰 Negotiate — +15 gold',fx:'gold',v:15,evil:2}]},
+  {title:'Hostage Situation',opts:[{text:'🦸 Rescue them — +15 HP',fx:'heal',v:15,evil:-7},{text:'🤝 Negotiate — duplicate best card',fx:'dupe',evil:3},{text:'💀 Use it to your advantage — +30 gold',fx:'gold',v:30,evil:8}]},
+  {title:'Suspicious Alley',opts:[{text:'👀 Investigate — remove a basic',fx:'remove',evil:-2},{text:'💰 Accept the bribe — +25 gold',fx:'gold',v:25,evil:4},{text:'🚶 Keep walking',fx:'nothing',evil:0}]},
 ];
 
 const ALL_RELICS=[
-  {id:'r1',name:'Spiked Gauntlets',desc:'COMBO: +4 not +3',icon:'🥊',syn:'COMBO',fx:'comboPow'},
-  {id:'r2',name:'First Blood',desc:'1st attack +4',icon:'🩸',syn:'COMBO',fx:'firstStrike'},
-  {id:'r3',name:'Focus Crystal',desc:'Channel +30%',icon:'🔮',syn:'CHANNEL',fx:'chanPow'},
-  {id:'r4',name:'Mana Siphon',desc:'Channel heals 25%',icon:'💎',syn:'CHANNEL',fx:'chanHeal'},
-  {id:'r5',name:'Titanium Shell',desc:'Fortify 65%',icon:'🐢',syn:'FORTIFY',fx:'fortUp'},
-  {id:'r6',name:'Regenerator',desc:'+2 HP/turn',icon:'💗',syn:'FORTIFY',fx:'regen'},
-  {id:'r7',name:'Lightning Boots',desc:'Momentum at 3',icon:'👟',syn:'MOMENTUM',fx:'momDown'},
-  {id:'r8',name:'Afterimage',desc:'+2 Block/card',icon:'👤',syn:'MOMENTUM',fx:'cardBlk'},
-  {id:'r9',name:'Plague Mask',desc:'All poison +2',icon:'🎭',syn:'CORRODE',fx:'poisUp'},
-  {id:'r10',name:'Blood Ruby',desc:'Blood costs 3',icon:'💎',syn:'BLOOD',fx:'bloodCheap'},
-  {id:'r11',name:'Death Wish',desc:'Desperate at 40%',icon:'💀',syn:'BLOOD',fx:'despUp'},
-  {id:'r12',name:'Echo Chamber',desc:'Echo copies at 75%',icon:'🔊',syn:'ECHO',fx:'echoUp'},
-  {id:'r13',name:'Reactive Armor',desc:'Shield Bash +5',icon:'🛡️',syn:'SHIELD BASH',fx:'bashUp'},
-  {id:'r14',name:'Toxic Catalyst',desc:'Catalyze also heals',icon:'💉',syn:'CATALYZE',fx:'catHeal'},
-  {id:'r15',name:'Gold Tooth',desc:'+10 gold/fight',icon:'🦷',syn:'any',fx:'goldUp'},
-  {id:'r16',name:'Thick Skin',desc:'+8 max HP',icon:'💪',syn:'any',fx:'hpUp'},
-  {id:'r17',name:'Energy Cell',desc:'+1 energy',icon:'🔋',syn:'any',fx:'enUp'},
-  {id:'r18',name:'Lucky Coin',desc:'+5% crit',icon:'🪙',syn:'any',fx:'critSmall'},
-  {id:'r19',name:'Charge Capacitor',desc:'Charge +3 value',icon:'⏳',syn:'CHARGE',fx:'chargePow'},
-  {id:'r20',name:'War Paint',desc:'+10% crit',icon:'🎨',syn:'any',fx:'critUp'},
-  {id:'r21',name:'Page Turner',desc:'Draw +1 superpower each turn',icon:'📄',syn:'any',fx:'drawUp'},
-  {id:'r22',name:'Utility Belt',desc:'Start each turn with 6 superpowers',icon:'🎒',syn:'any',fx:'handSize'},
+  {id:'r1',name:'Spiked Gauntlets',desc:'COMBO: +4 not +3',icon:'🥊',syn:'COMBO',fx:'comboPow',alignBias:'villain'},
+  {id:'r2',name:'First Blood',desc:'1st attack +4',icon:'🩸',syn:'COMBO',fx:'firstStrike',alignBias:'villain'},
+  {id:'r3',name:'Focus Crystal',desc:'Channel +30%',icon:'🔮',syn:'CHANNEL',fx:'chanPow',alignBias:'any'},
+  {id:'r4',name:'Mana Siphon',desc:'Channel heals 25%',icon:'💎',syn:'CHANNEL',fx:'chanHeal',alignBias:'hero'},
+  {id:'r5',name:'Titanium Shell',desc:'Fortify 65%',icon:'🐢',syn:'FORTIFY',fx:'fortUp',alignBias:'hero'},
+  {id:'r6',name:'Regenerator',desc:'+2 HP/turn',icon:'💗',syn:'FORTIFY',fx:'regen',alignBias:'hero'},
+  {id:'r7',name:'Lightning Boots',desc:'Momentum at 3',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
+  {id:'r8',name:'Afterimage',desc:'+2 Block/card',icon:'👤',syn:'MOMENTUM',fx:'cardBlk',alignBias:'any'},
+  {id:'r9',name:'Plague Mask',desc:'All poison +2',icon:'🎭',syn:'CORRODE',fx:'poisUp',alignBias:'villain'},
+  {id:'r10',name:'Blood Ruby',desc:'Blood costs 3',icon:'💎',syn:'BLOOD',fx:'bloodCheap',alignBias:'villain'},
+  {id:'r12',name:'Echo Chamber',desc:'Echo copies at 75%',icon:'🔊',syn:'ECHO',fx:'echoUp',alignBias:'any'},
+  {id:'r13',name:'Reactive Armor',desc:'Shield Bash +5',icon:'🛡️',syn:'SHIELD BASH',fx:'bashUp',alignBias:'hero'},
+  {id:'r14',name:'Toxic Catalyst',desc:'Catalyze also heals',icon:'💉',syn:'CATALYZE',fx:'catHeal',alignBias:'hero'},
+  {id:'r15',name:'Gold Tooth',desc:'+10 gold/fight',icon:'🦷',syn:'any',fx:'goldUp',alignBias:'any'},
+  {id:'r16',name:'Thick Skin',desc:'+8 max HP',icon:'💪',syn:'any',fx:'hpUp',alignBias:'hero'},
+  {id:'r17',name:'Energy Cell',desc:'+1 energy',icon:'🔋',syn:'any',fx:'enUp',alignBias:'any'},
+  {id:'r18',name:'Lucky Coin',desc:'+5% crit',icon:'🪙',syn:'any',fx:'critSmall',alignBias:'any'},
+  {id:'r19',name:'Charge Capacitor',desc:'Charge +3 value',icon:'⏳',syn:'CHARGE',fx:'chargePow',alignBias:'villain'},
+  {id:'r20',name:'War Paint',desc:'+10% crit',icon:'🎨',syn:'any',fx:'critUp',alignBias:'villain'},
+  {id:'r21',name:'Page Turner',desc:'Draw +1 superpower each turn',icon:'📄',syn:'any',fx:'drawUp',alignBias:'hero'},
+  {id:'r22',name:'Utility Belt',desc:'Start each turn with 6 superpowers',icon:'🎒',syn:'any',fx:'handSize',alignBias:'any'},
 ];
 const pickRelics=(owned,n=3)=>shuffle(ALL_RELICS.filter(r=>!owned.some(o=>o.id===r.id))).slice(0,n);
 
@@ -250,12 +389,53 @@ function getValid(grid,card){
   const s=new Set();for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(canPlace(grid,r,c,card))s.add(`${r}-${c}`);return s;
 }
 
+// ═══ PROJECTED DAMAGE — shown on cards in hand during battle ═══
+function calcProjectedDmg(card,battle,relics,en){
+  if(!en)return null;
+  const hasR=fx=>relics?.some(r=>r.fx===fx);
+  const chB=card.charge&&hasR('chargePow')?3:0;
+  if(card.keyword==='echo')return{label:'≈ prev',color:'#dd88ff'};
+  if(card.keyword==='shieldbash'){const dmg=battle.playerBlock+(hasR('bashUp')?5:0);return{label:`${dmg} dmg (= block)`,color:'#55aaff'};}
+  if(card.keyword==='catalyze'){return{label:`${en.poisonStacks||0} dmg (= poison)`,color:'#88ff44'};}
+  if(card.keyword==='channel'||card.keyword==='overchannel'){
+    const pow=hasR('chanPow')?1.3:1;const add=Math.floor((card.value+chB)*pow);
+    return{label:`+${add}ch → ${battle.channelStacks+add} burst`,color:'#bb55ff'};}
+  switch(card.type){
+    case 'attack':case 'rage':{
+      const cb=card.keyword==='combo'?(battle.comboCount*(hasR('comboPow')?4:3)):0;
+      const fb=battle.comboCount===0&&hasR('firstStrike')?4:0;
+      const defMit=Math.floor((en.def||0)*0.35);
+      let tot=0;let blkUsed=0;
+      for(let h=0;h<(card.hits||1);h++){
+        let raw=Math.floor((card.value+cb+fb+chB)/(card.hits||1));
+        let d=Math.max(1,raw-defMit);
+        const bl=Math.min(Math.max(0,(en.block||0)-blkUsed),d);blkUsed+=bl;d-=bl;tot+=d;}
+      const parts=[];
+      if(defMit>0)parts.push(`-${defMit} def`);
+      if((en.block||0)>0)parts.push(`-${en.block} blk`);
+      const sfx=parts.length?` (${parts.join(', ')})` :'';
+      return{label:`${tot} dmg${sfx}`,color:'#ff4455'};}
+    case 'magic':{
+      const defMit=Math.floor((en.def||0)*0.18);
+      let d=Math.max(1,Math.floor(card.value+chB)-defMit);
+      const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(en.block||0,b2);
+      const actual=p2+b2-bl;
+      const parts=[];if(defMit>0)parts.push(`-${defMit} def`);if((en.block||0)>0)parts.push(`${p2} pierce`);
+      const sfx=parts.length?` (${parts.join(', ')})` :'';
+      return{label:`${actual} dmg${sfx}`,color:'#bb55ff'};}
+    case 'defend':return{label:`+${card.value+chB} block`,color:'#4499ff'};
+    case 'poison':{const extra=hasR('poisUp')?2:0;return{label:`+${Math.ceil(card.value||3)+extra+chB} poison`,color:'#44dd66'};}
+    case 'heal':return{label:`+${card.value+chB} HP`,color:'#55ddbb'};
+    case 'draw':return{label:`draw +${card.value+chB}`,color:'#33ddff'};
+    default:return null;
+  }
+}
+
 // ═══ RESOLVE CARD (called during END_TURN in reading order) ═══
 function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
   const hasR=fx=>relics?.some(r=>r.fx===fx);
-  const desperate=pHp<pMaxHp*(hasR('despUp')?0.4:0.3);
   const crit=Math.random()*100<(10+(hasR('critUp')?10:0)+(hasR('critSmall')?5:0));
-  const cm=(crit?1.5:1)*(card.keyword==='blood'&&desperate?2:1);
+  const cm=(crit?1.5:1);
   const chB=card.charge&&hasR('chargePow')?3:0;
   let msg='';
 
@@ -300,8 +480,10 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
     case 'attack':case 'rage':{
       const cb=card.keyword==='combo'?(st.comboCount*(hasR('comboPow')?4:3)):0;
       const fb=st.comboCount===0&&hasR('firstStrike')?4:0;
-      let tot=0;for(let h=0;h<card.hits;h++){let d=Math.floor((card.value+cb+fb+chB)*cm/card.hits);const bl=Math.min(en.block,d);en.block-=bl;d-=bl;en.gameHp=Math.max(0,en.gameHp-d);tot+=d;}
-      msg=`${card.icon} ${card.name} → ${tot}${crit?' CRIT!':''}${cb>0?' +'+cb:''}${desperate?' 2×':''}`;
+      // Enemy defense (from CSV Defense stat) mitigates physical damage
+      const defMit=Math.floor((en.def||0)*0.35);
+      let tot=0;for(let h=0;h<card.hits;h++){let raw=Math.floor((card.value+cb+fb+chB)*cm/card.hits);let d=Math.max(1,raw-defMit);const bl=Math.min(en.block,d);en.block-=bl;d-=bl;en.gameHp=Math.max(0,en.gameHp-d);tot+=d;}
+      msg=`${card.icon} ${card.name} → ${tot}${crit?' CRIT!':''}${cb>0?' +'+cb:''}${defMit>0?` (−${defMit} def)`:''}`;
       if(card.keyword==='combo'||card.type==='attack')st.comboCount++;
       st.momentum++;break;}
     case 'magic':{
@@ -309,14 +491,17 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
         const pow=hasR('chanPow')?1.3:1;st.channelStacks+=Math.floor((card.value+chB)*cm*pow);
         if(card.debuff)en.weakened=(en.weakened||0)+card.debuff;
         msg=`✨ CHANNEL +${Math.floor((card.value+chB)*cm*pow)} [${st.channelStacks}]`;
-      }else{let d=Math.floor((card.value+chB)*cm);const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
+      }else{
+        // Magic partially mitigated by defense (half as effective as physical)
+        const defMit=Math.floor((en.def||0)*0.18);
+        let d=Math.max(1,Math.floor((card.value+chB)*cm)-defMit);const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
         msg=`${card.icon} ${card.name} → ${d}${bl>0?` (${bl} blk, ${p2} pierced)`:''}`; }
       st.momentum++;break;}
     case 'defend':st.playerBlock+=card.value+chB;msg=`🛡️ +${card.value+chB} Block${card.keyword==='fortify'?' [FORTIFY]':''}`;st.momentum++;break;
     case 'poison':{const extra=hasR('poisUp')?2:0;const amt=Math.ceil(card.value||card.override||3)+extra+chB;
       en.poisonStacks+=amt;if(card.keyword==='corrode'){en.corrodeStacks=(en.corrodeStacks||0)+amt;msg=`☠️ CORRODE +${amt} [permanent]`;}else msg=`☠️ +${amt} Poison`;st.momentum++;break;}
     case 'heal':healFn(card.value+chB);msg=`💚 +${card.value+chB} HP`;st.momentum++;break;
-    case 'draw':st.extraDraw=(st.extraDraw||0)+(card.value+chB);msg=`📖 Draw +${card.value+chB} superpowers this turn`;st.momentum++;break;
+    case 'draw':st.extraDraw=(st.extraDraw||0)+(card.value+chB);msg=`📖 Draw +${card.value+chB} extra superpowers next turn`;st.momentum++;break;
   }
   if(hasR('cardBlk'))st.playerBlock+=2;
   return msg;
@@ -325,10 +510,10 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
 // ═══ BATTLE REDUCER ═══
 const INIT_B={hand:[],drawPile:[],discardPile:[],energy:3,maxEnergy:3,playerBlock:0,
   enemy:null,page:Array(ROWS).fill(null).map(()=>Array(COLS).fill(null)),
-  enemyPlan:[],
+  enemyPlan:[],enemyPlanIdx:0,
   queuedPages:[],
   placedCards:[],pendingCharges:[],activeCharges:[],// activeCharges = from last turn, visually on page
-  turn:1,phase:'player',log:[],victory:false,defeat:false,
+  turn:1,phase:'player',log:[],turnLogStart:0,victory:false,defeat:false,
   comboCount:0,channelStacks:0,momentum:0,momentumUsed:false,extraDraw:0};
 
 function bReduce(state,action){
@@ -422,27 +607,47 @@ function bReduce(state,action){
 
       if(en.gameHp<=0){s.enemy=en;s.victory=true;s.phase='done';return s;}
 
-      // 4. Enemy acts — sequentially through its 4-panel intent queue
+      // 4. Enemy acts — one panel per turn, cycling through the plan
       let pHp=Math.min(playerMaxHp,playerHp+totalHeal);let pBlk=s.playerBlock;
-      s.enemyPlan.forEach((intentCard,idx)=>{
-        if(pHp<=0||en.gameHp<=0)return;
+      const pDef=action.playerDef||2;// player's defense stat reduces incoming physical damage
+      const intentCard=s.enemyPlan[s.enemyPlanIdx]||s.enemyPlan[0];
+      if(intentCard&&pHp>0){
+        const panelNum=s.enemyPlanIdx+1;
+        const cn=intentCard.name?(intentCard.name.split("'s ")[1]||intentCard.name):'';
         switch(intentCard.intent){
-          case 'attack':{let d=Math.max(1,intentCard.intentVal-(en.weakened||0));const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;pHp=Math.max(0,pHp-d);
-            s.log=[...s.log,`🔴 [${idx+1}] ${en.Name}: ${d} dmg${bl>0?' ('+bl+' blk)':''}`];break;}
-          case 'magic':{let d=intentCard.intentVal;const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(pBlk,b2);pBlk-=bl;d=p2+b2-bl;pHp=Math.max(0,pHp-d);
-            s.log=[...s.log,`🟣 [${idx+1}] ${en.Name}: ${d} magic${bl>0?` (${bl} blk, ${p2} pierced)`:''}` ];break;}
-          case 'defend':en.block+=intentCard.intentVal;s.log=[...s.log,`🔵 [${idx+1}] ${en.Name}: +${intentCard.intentVal} Blk`];break;
-          case 'buff':en.atk+=intentCard.intentVal;s.log=[...s.log,`🟡 [${idx+1}] ${en.Name}: ATK +${intentCard.intentVal}`];break;
+          case 'attack':{
+            let d=Math.max(1,(intentCard.intentVal-(en.weakened||0))-pDef);
+            const bl=Math.min(pBlk,d);pBlk-=bl;d-=bl;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`🔴 [${panelNum}] ${en.Name} ${cn}: ${d} dmg${bl>0?' ('+bl+' blk)':''}${pDef>0?` [−${pDef} def]`:''}`];break;}
+          case 'magic':{let d=Math.max(1,intentCard.intentVal-Math.floor(pDef*0.5));const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(pBlk,b2);pBlk-=bl;d=p2+b2-bl;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`🟣 [${panelNum}] ${en.Name} ${cn}: ${d} magic${bl>0?` (${bl} blk, ${p2} pierced)`:''}`];break;}
+          case 'channel':{const d=intentCard.intentVal;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`✨ [${panelNum}] ${en.Name} ${cn}: CHANNEL ${d} (full pierce)`];break;}
+          case 'defend':en.block+=intentCard.intentVal;s.log=[...s.log,`🔵 [${panelNum}] ${en.Name} ${cn}: +${intentCard.intentVal} Blk`];break;
+          case 'buff':en.atk+=intentCard.intentVal;s.log=[...s.log,`🟡 [${panelNum}] ${en.Name} ${cn}: ATK +${intentCard.intentVal}`];break;
+          case 'poison':{let d=intentCard.intentVal;const bl=Math.min(pBlk,Math.floor(d*0.5));pBlk-=bl;d=Math.max(0,d-bl);pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`☠️ [${panelNum}] ${en.Name} ${cn}: ${d} poison${bl>0?' ('+bl+' blk)':''}`];break;}
+          case 'corrode':{const d=intentCard.intentVal;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`☠️ [${panelNum}] ${en.Name} ${cn}: CORRODE ${d} (pierces block)`];break;}
+          case 'heal':{en.gameHp=Math.min(en.gameMaxHp,en.gameHp+intentCard.intentVal);
+            s.log=[...s.log,`💚 [${panelNum}] ${en.Name} ${cn}: heals ${intentCard.intentVal}`];break;}
+          case 'shieldbash':{const d=Math.max(0,en.block-(en.weakened||0));const bl=Math.min(pBlk,d);pBlk-=bl;pHp=Math.max(0,pHp-(d-bl));
+            s.log=[...s.log,`🏰 [${panelNum}] ${en.Name} ${cn}: BASH ${d} (= enemy block)`];break;}
+          case 'catalyze':{const d=en.poisonStacks||0;pHp=Math.max(0,pHp-d);
+            s.log=[...s.log,`💀 [${panelNum}] ${en.Name} ${cn}: CATALYZE ${d} (= enemy poison)`];break;}
           default:break;
         }
-      });
+      }
+      // Advance to next panel; regenerate plan when the cycle completes
+      const nextIdx=(s.enemyPlanIdx+1)%s.enemyPlan.length;
+      s.enemyPlanIdx=nextIdx;
+      if(nextIdx===0)s.enemyPlan=makeEnemyPlan(en);
 
       // Sync remaining block after enemy consumed some (needed for accurate Fortify carry)
       s.playerBlock=pBlk;
       action.setPlayerHp(pHp);
       if(pHp<=0){s.enemy=en;s.defeat=true;s.phase='done';return s;}
       s.enemy=en;
-      s.enemyPlan=makeEnemyPlan(en);
 
       // Fortify carry — uses remaining block after enemy attacks
       const allPlacedCards=s.queuedPages.flatMap(p=>p.cards||[]).concat(s.placedCards);
@@ -479,6 +684,7 @@ function bReduce(state,action){
       s.comboCount=0;s.momentum=0;s.momentumUsed=false;s.turn++;s.phase='player';
       if(carry>0)s.log=[...s.log,`🛡️ Fortify: ${carry}`];
       if(newActive.length>0)s.log=[...s.log,`⏳ ${newActive.length} charged card(s) ready to fire next turn!`];
+      s.turnLogStart=s.log.length;
       return s;}
     default:return s;
   }
@@ -528,7 +734,7 @@ export default function ComicSpire(){
   const[player,setPlayer]=useState(null);
   const[deck,setDeck]=useState([]);
   const[gold,setGold]=useState(0);
-  const[alignment,setAlignment]=useState('neutral');
+  const[evilness,setEvilness]=useState(50);
   const[hexMap,setHexMap]=useState(null);
   const[curFloor,setCurFloor]=useState(0);
   const[curNodeId,setCurNodeId]=useState(null);
@@ -542,41 +748,52 @@ export default function ComicSpire(){
   const[copiedAbilities,setCopiedAbilities]=useState([]);
   const[potLv,setPotLv]=useState(1);
   const[showCodex,setShowCodex]=useState(false);
+  const[codexTab,setCodexTab]=useState('powers');
   const[pendingBattle,setPendingBattle]=useState(null);
   const enemyCache=useRef({});
-  const[rewardPhase,setRewardPhase]=useState('card');
+  const[rewardPhase,setRewardPhase]=useState('absorb');
   const[rewardRelics,setRewardRelics]=useState([]);
-  const[rewardCards,setRewardCards]=useState([]); // FIXED: stored in state, not recalculated
+  const[rewardCards,setRewardCards]=useState([]);
+  const[selectedAbsorbCard,setSelectedAbsorbCard]=useState(null);
+  const[absorbedCardIds,setAbsorbedCardIds]=useState([]);
   const[tooltip,setTooltip]=useState(null);
   const[battle,dispatch]=useReducer(bReduce,INIT_B);
   const[floaters,setFloaters]=useState([]);
   const[slatePreview,setSlatePreview]=useState([]);
+  const[showLog,setShowLog]=useState(false);
+  const[restPopup,setRestPopup]=useState(null);
+  const[damageFlash,setDamageFlash]=useState(false);
+  const prevHpRef=useRef(null);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
-  const logRef=useRef(null);
-  useEffect(()=>{if(logRef.current)logRef.current.scrollTop=9999;},[battle.log]);
   // Clear tooltip and floaters on any screen change
   useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
   const addFloat=useCallback((t,c,side='enemy')=>{const id=uid();setFloaters(p=>[...p,{id,text:t,color:c,x:side==='enemy'?60+Math.random()*24:6+Math.random()*24,y:18+Math.random()*22}]);setTimeout(()=>setFloaters(p=>p.filter(f=>f.id!==id)),1400);},[]);
   const doShake=useCallback(()=>{setShake(true);setTimeout(()=>setShake(false),350);},[]);
   const healPlayer=useCallback(amt=>setPlayer(p=>p?{...p,hp:Math.min(p.maxHp,p.hp+amt)}:p),[]);
+  useEffect(()=>{
+    const hp=player?.hp;
+    if(hp==null){prevHpRef.current=hp;return;}
+    if(prevHpRef.current!=null&&hp<prevHpRef.current){setDamageFlash(true);setTimeout(()=>setDamageFlash(false),500);}
+    prevHpRef.current=hp;
+  },[player?.hp]);
   const hasR=useCallback(fx=>relics.some(r=>r.fx===fx),[relics]);
   const applyRelic=useCallback(r=>{setRelics(p=>[...p,r]);if(r.fx==='hpUp')setPlayer(p=>({...p,maxHp:p.maxHp+8,hp:p.hp+8}));if(r.fx==='enUp')setMaxEnergy(p=>Math.min(5,p+1));},[]);
 
   useEffect(()=>{if(battle.victory&&screen==='battle'){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
     setCopiedAbilities(p=>[...p,{name:en.Name,sig:en.signature.name,arch:en.signature.archetype,icon:en.signature.icon,kw:en.signature.keyword}]);
-    setPotLv(p=>p+1);setRewardRelics(pickRelics(relics,3));setRewardPhase('card');
-    // Generate reward cards ONCE here, not in render
-    const sig=en.signature;
-    const alts=shuffle(heroes).slice(0,2).map(h=>getSignature(h));
-    setRewardCards([sig,...alts]);
+    setPotLv(p=>p+1);
+    setPlayer(p=>p?{...p,maxHp:p.maxHp+5,hp:Math.min(p.maxHp+5,p.hp+5),def:(p.def||2)+1}:p);
+    setRewardRelics(pickRelics(relics,3));setRewardPhase('absorb');
+    setSelectedAbsorbCard(null);setAbsorbedCardIds([]);
+    setRewardCards(en.deck||[en.signature]);
     setTimeout(()=>setScreen('reward'),800);}},[battle.victory]);
   useEffect(()=>{if(battle.defeat&&screen==='battle')setTimeout(()=>setScreen('gameOver'),600);},[battle.defeat]);
 
   const startGame=useCallback(()=>{
-    setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,speed:55});
-    setDeck(makeStarterDeck());setGold(25);setAlignment('neutral');setMaxEnergy(3);
+    setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,speed:55,def:2});
+    setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
     setPotLv(1);setCopiedAbilities([]);setRelics([]);
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
     setMapLog(['Choose a path. Branches lock in for 3 floors.']);setScreen('map');
@@ -595,19 +812,36 @@ export default function ComicSpire(){
 
   const endTurn=useCallback(()=>{
     if(battle.phase!=='player')return;setAnimPhase('r');
+    // Evilness shifts based on card keywords played this turn
+    const allPlayedCards=[...battle.queuedPages.flatMap(p=>p.cards||[]),...battle.placedCards];
+    if(allPlayedCards.length>0){
+      const EVIL_KW={frenzy:2,blood:2,corrode:1,overchannel:1,catalyze:1};
+      const GOOD_KW={fortify:-1,shieldbash:0,echo:0,channel:0,momentum:0,combo:0,charge:0};
+      const TYPE_SHIFT={poison:1,rage:1,heal:-1,defend:-1,draw:-1,attack:0,magic:0};
+      let shift=0;
+      allPlayedCards.forEach(c=>{
+        if(c.keyword&&EVIL_KW[c.keyword]!==undefined)shift+=EVIL_KW[c.keyword];
+        else if(c.keyword&&GOOD_KW[c.keyword]!==undefined)shift+=GOOD_KW[c.keyword];
+        else shift+=(TYPE_SHIFT[c.type]||0);
+      });
+      if(shift!==0)setEvilness(p=>clamp(p+shift,0,100));
+    }
     const finalPages=[...battle.queuedPages];
     if(battle.placedCards.length>0)finalPages.push({cards:battle.placedCards});
     if(finalPages.length>0){
-      const preview=finalPages.map((pg,idx)=>({
-        id:idx,
-        cards:pg.cards?.length||0,
-        slateIndex:clamp(pg.cards?.length||1,1,4),
-      }));
-      setSlatePreview(preview);
-      setTimeout(()=>setSlatePreview([]),1200);
+      // Build a flat ROWS×COLS panel grid: each cell gets the card type/icon placed there
+      const gridCells=Array(ROWS*COLS).fill(null);
+      const allCards=finalPages.flatMap(pg=>pg.cards||[]);
+      allCards.forEach(card=>{
+        const span=panelSpanForCard(card);
+        const start=panelIdx(card.row,card.col);
+        for(let i=0;i<span;i++){const ci=start+i;if(ci<ROWS*COLS&&gridCells[ci]===null)gridCells[ci]={type:card.type,icon:card.icon};}
+      });
+      setSlatePreview(gridCells);
+      setTimeout(()=>setSlatePreview([]),1400);
     }
     setTimeout(()=>{
-      dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,
+      dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,playerDef:player?.def||2,
         getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
       doShake();setAnimPhase(null);
     },400);
@@ -618,12 +852,21 @@ export default function ComicSpire(){
     const[cf,ci]=(curNodeId||'0-0').split('-').map(Number);const cur=hexMap[cf]?.[ci];
     if(!cur?.conns?.includes(nodeId)&&f!==0)return;const node=hexMap[f][i];
     if(['battle','elite','boss'].includes(node.type)){
-      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite');
+      if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness);
       setPendingBattle({nodeId,en:enemyCache.current[nodeId]});return;}
     setHexMap(prev=>prev.map((row,fi)=>fi===f?row.map(n=>n.id===nodeId?{...n,visited:true}:n):row));setCurFloor(f);setCurNodeId(nodeId);
-    if(node.type==='shop'){setShopItems(shuffle(heroes).slice(0,4).map(h=>{const s=getSignature(h);s.price=Math.floor(18+s.tier*12+s.value);return s;}));setShopRelics(pickRelics(relics,2).map(r=>({...r,price:r.syn==='any'?30:45})));setScreen('shop');}
+    if(node.type==='shop'){
+      const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+      let shopPool=heroes;
+      if(al==='hero')shopPool=heroes.filter(h=>h.isVillain!=='True');// heroes buy from hero-type vendors
+      else if(al==='villain')shopPool=heroes.filter(h=>h.isVillain==='True');// villains buy from villain-type vendors
+      if(shopPool.length<4)shopPool=heroes;
+      setShopItems(shuffle(shopPool).slice(0,4).map(h=>{const s=getSignature(h);s.price=Math.floor(18+s.tier*12+s.value);return s;}));
+      const alignedRelics=ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id)&&(r.alignBias==='any'||r.alignBias===al||!r.alignBias));
+      setShopRelics(shuffle(alignedRelics.length>=2?alignedRelics:ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id))).slice(0,2).map(r=>({...r,price:r.syn==='any'?30:45})));
+      setScreen('shop');}
     else if(node.type==='event'){setCurEvent(pick(EVENTS));setScreen('event');}
-    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);healPlayer(h);setMapLog(p=>[...p,`🏕 +${h} HP`]);}
+    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});}
   },[hexMap,curNodeId,heroes,player,relics,healPlayer]);
 
   const handleEvent=useCallback(opt=>{
@@ -635,12 +878,15 @@ export default function ComicSpire(){
     else if(opt.fx==='maxEn')setMaxEnergy(p=>Math.min(5,p+1));
     else if(opt.fx==='dupe'){if(cp.length>0){const b=[...cp].sort((a,b)=>b.value-a.value)[0];setDeck(p=>[...p,{...b,id:uid()}]);}}
     else if(opt.fx==='upWeak'){if(cp.length>0){const w=[...cp].sort((a,b)=>a.value-b.value)[0];setDeck(p=>p.map(x=>x.id===w.id?{...x,value:Math.floor(x.value*1.4),name:x.name+'+'}:x));}}
+    if(opt.evil)setEvilness(p=>clamp(p+opt.evil,0,100));
     setScreen('map');
-  },[deck,healPlayer]);
+  },[deck,healPlayer,setEvilness]);
 
-  const pickRewardCard=useCallback(card=>{if(card)setDeck(p=>[...p,card]);setRewardPhase('relic');},[]);
   const pickRewardRelic=useCallback(r=>{if(r)applyRelic(r);if(hexMap&&curFloor>=hexMap.length-1){setScreen('victory');return;}setScreen('map');},[hexMap,curFloor,applyRelic]);
 
+  const alignment=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+  const alignLabel=evilness<=20?'RIGHTEOUS':evilness<=40?'VALIANT':evilness<=59?'ROGUE':evilness<=79?'RUTHLESS':'CORRUPT';
+  const alignColor=alignment==='hero'?'#33aaff':alignment==='villain'?'#ff3366':'#aaaaaa';
   const accent=alignment==='villain'?'#ff3366':alignment==='hero'?'#33aaff':'#ffaa33';
   const bg1=alignment==='villain'?'#12060f':alignment==='hero'?'#060d18':'#0d0d14';
   const bg2=alignment==='villain'?'#200e1c':alignment==='hero'?'#0c1628':'#14141e';
@@ -653,10 +899,18 @@ export default function ComicSpire(){
 
   const HpBar=({hp,max,color,h=13})=> <div style={{position:'relative',height:h,background:'#1a1a2a',borderRadius:h/2,overflow:'hidden',border:'1px solid #333',minWidth:80}}><div style={{height:'100%',width:`${clamp(hp/max*100,0,100)}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:h/2,transition:'width 0.4s'}}/><div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:h*0.6,fontFamily:FB,fontWeight:700,color:'#fff',textShadow:'0 1px 2px #000'}}>{hp}/{max}</div></div>;
 
-  const IntentBox=({intent,val,weak,compact=false})=>{const cfg={attack:{i:'⚔️',c:'#ff4455',t:`${Math.max(1,val-(weak||0))} dmg`},magic:{i:'✨',c:'#bb55ff',t:`${val} magic`},defend:{i:'🛡️',c:'#4499ff',t:`+${val} Blk`},buff:{i:'💪',c:'#ffcc33',t:`+${val} ATK`}}[intent]||{i:'?',c:'#888',t:''};
-    return <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4,padding:compact?'2px':'3px 6px',background:`${cfg.c}10`,border:`1px solid ${cfg.c}33`,borderRadius:5,marginTop:compact?0:2,fontSize:compact?8:9,lineHeight:1}}><span>{cfg.i}</span><span style={{color:'#bbb',fontFamily:FB}}>{cfg.t}</span></div>;};
+  const IntentBox=({intent,val,weak,compact=false,card=null})=>{
+    const nm=card?(card.name?.split("'s ")[1]||card.name):null;
+    const cfg={attack:{i:card?.icon||'⚔️',c:'#ff4455',t:`${Math.max(1,(val||0)-(weak||0))} dmg`},magic:{i:card?.icon||'✨',c:'#bb55ff',t:`${val} magic`},channel:{i:card?.icon||'✨',c:'#bb55ff',t:`${val} pierce`},defend:{i:card?.icon||'🛡️',c:'#4499ff',t:`+${val} Blk`},buff:{i:'💪',c:'#ffcc33',t:`+${val||0} ATK`},poison:{i:card?.icon||'☠️',c:'#44dd66',t:`${val} poison`},corrode:{i:'☠️',c:'#44dd66',t:`${val} corrode`},heal:{i:card?.icon||'💚',c:'#55ddbb',t:`heal ${val}`},shieldbash:{i:'🏰',c:'#55aaff',t:`bash ${val}`},catalyze:{i:'💀',c:'#88ff44',t:`cat. ${val}`}}[intent]||{i:'?',c:'#888',t:''};
+    return <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:compact?5:6,padding:compact?'4px 6px':'3px 6px',background:`${cfg.c}18`,border:`1px solid ${cfg.c}44`,borderRadius:5,marginTop:compact?0:2,lineHeight:1,maxWidth:'94%'}}>
+      <span style={{fontSize:compact?18:20}}>{cfg.i}</span>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:1}}>
+        {nm&&<span style={{color:'#eee',fontFamily:FD,fontSize:compact?8:9,lineHeight:1.1}}>{nm.length>12?nm.slice(0,10)+'…':nm}</span>}
+        <span style={{color:cfg.c,fontFamily:FB,fontSize:compact?10:11,fontWeight:700}}>{cfg.t}</span>
+      </div>
+    </div>;};
 
-  const Card=({card,onClick,sel,price,dis})=>{const kInfo=KW_INFO[card.keyword];const tc=kInfo?.color||TC[card.type]||'#888';
+  const Card=({card,onClick,sel,price,dis,projDmg})=>{const kInfo=KW_INFO[card.keyword];const tc=kInfo?.color||TC[card.type]||'#888';
     return <div onClick={()=>!dis&&onClick?.(card)} style={{width:118,minWidth:118,height:165,borderRadius:8,overflow:'hidden',cursor:dis?'default':'pointer',background:bg2,border:`2px solid ${sel?'#fff':tc}`,boxShadow:sel?`0 0 18px ${tc}66`:`0 3px 8px #00000088`,transform:sel?'translateY(-10px) scale(1.05)':'scale(1)',transition:'all 0.2s',flexShrink:0,opacity:dis?0.3:1}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'2px 5px',background:`${tc}18`}}>
         <div style={{width:18,height:18,borderRadius:'50%',background:card.keyword==='blood'?'#ff3333':card.keyword==='frenzy'?'#ff55aa':tc,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:FD,fontSize:10,color:'#000',fontWeight:700}}>{card.keyword==='blood'?'♥'+(hasR('bloodCheap')?3:card.bloodCost):card.keyword==='frenzy'?'0':card.cost}</div>
@@ -671,6 +925,7 @@ export default function ComicSpire(){
       </div>
       <div style={{padding:'1px 5px 3px',borderTop:'1px solid #ffffff06',fontSize:7}}>
         {price!=null?<span style={{fontFamily:FD,fontSize:10,color:gold>=price?'#ffd700':'#ff4455'}}>💰{price}</span>:
+         projDmg!=null?<span style={{fontFamily:FD,fontSize:8,color:projDmg.color,fontWeight:700}}>{projDmg.label}</span>:
           <span style={{color:card.copiedFrom?tc:'#444',fontFamily:FB}}>{card.copiedFrom?'🔓'+card.heroName:'Basic'}</span>}
       </div>
     </div>;};
@@ -679,12 +934,12 @@ export default function ComicSpire(){
     return <div onClick={()=>!dis&&onClick?.(relic)} style={{width:130,padding:'6px 8px',background:bg2,border:`1.5px solid ${sc}33`,borderRadius:8,cursor:dis?'default':'pointer',opacity:dis?0.3:1,transition:'all 0.2s'}}
       onMouseEnter={e=>{if(!dis){e.currentTarget.style.borderColor=sc;e.currentTarget.style.transform='translateY(-3px)';}}}
       onMouseLeave={e=>{e.currentTarget.style.borderColor=`${sc}33`;e.currentTarget.style.transform='';}}>
-      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}><span style={{fontSize:16}}>{relic.icon}</span><div><div style={{fontFamily:FD,fontSize:10,color:'#fff'}}>{relic.name}</div><div style={{fontSize:7,color:sc,fontFamily:FD}}>GADGET · {relic.syn==='any'?'UNIVERSAL':relic.syn}</div></div></div>
+      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}><span style={{fontSize:16}}>{relic.icon}</span><div><div style={{fontFamily:FD,fontSize:10,color:'#fff'}}>{relic.name}</div><div style={{fontSize:7,color:sc,fontFamily:FD}}>AMP · {relic.syn==='any'?'UNIVERSAL':relic.syn}</div></div></div>
       <div style={{fontFamily:FB,fontSize:8,color:'#999',lineHeight:1.2}}>{relic.desc}</div>
       {price!=null&&<div style={{fontFamily:FD,fontSize:10,color:gold>=price?'#ffd700':'#ff4455',marginTop:2}}>💰{price}</div>}
     </div>;};
 
-  const CSS=`@import url('${FURL}');@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes shakeAnim{0%,100%{transform:translate(0)}15%{transform:translate(-5px,2px)}35%{transform:translate(4px,-3px)}55%{transform:translate(-3px,4px)}75%{transform:translate(5px,-2px)}}@keyframes floatDmg{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-80px) scale(1.5)}}@keyframes enterCard{from{opacity:0;transform:translateY(20px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes chargeGlow{0%,100%{box-shadow:inset 0 0 8px #ffaa3322}50%{box-shadow:inset 0 0 16px #ffaa3366}}@keyframes spin{to{transform:rotate(360deg)}}`;
+  const CSS=`@import url('${FURL}');@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes shakeAnim{0%,100%{transform:translate(0)}15%{transform:translate(-5px,2px)}35%{transform:translate(4px,-3px)}55%{transform:translate(-3px,4px)}75%{transform:translate(5px,-2px)}}@keyframes floatDmg{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-80px) scale(1.5)}}@keyframes enterCard{from{opacity:0;transform:translateY(20px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes chargeGlow{0%,100%{box-shadow:inset 0 0 8px #ffaa3322}50%{box-shadow:inset 0 0 16px #ffaa3366}}@keyframes dmgFlash{0%{opacity:0.55}100%{opacity:0}}@keyframes spin{to{transform:rotate(360deg)}}`;
 
   // ═══ TOOLTIP OVERLAY — click anywhere to dismiss ═══
   const TooltipOverlay=()=>{if(!tooltip)return null;
@@ -716,61 +971,142 @@ export default function ComicSpire(){
   if(screen==='map')return (
     <div style={{minHeight:'100vh',background:bg1,padding:12,fontFamily:FB,color:'#fff'}}>
       <style>{CSS}</style><TooltipOverlay/>
+      {restPopup&&<div style={{position:'fixed',inset:0,background:'#000b',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <div style={{background:'#0d1a0d',border:'2px solid #66bb66',borderRadius:12,padding:'24px 32px',textAlign:'center',boxShadow:'0 0 40px #66bb6644'}}>
+          <div style={{fontSize:36,marginBottom:8}}>🏕️</div>
+          <div style={{fontFamily:FD,fontSize:18,color:'#66bb66',marginBottom:4}}>REST SITE</div>
+          <div style={{fontFamily:FB,fontSize:13,color:'#aaa',marginBottom:16}}>You recover <span style={{color:'#66ff66',fontWeight:700}}>+{restPopup.hp} HP</span></div>
+          <button onClick={()=>{healPlayer(restPopup.hp);setMapLog(p=>[...p,`🏕 +${restPopup.hp} HP`]);setRestPopup(null);}} style={{fontFamily:FD,fontSize:13,padding:'7px 28px',background:'linear-gradient(135deg,#336633,#55aa55)',border:'2px solid #66bb66',borderRadius:7,color:'#fff',cursor:'pointer'}}>
+            Rest →
+          </button>
+        </div>
+      </div>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 10px',background:'#00000066',borderRadius:8,border:`1px solid ${accent}22`,marginBottom:6,flexWrap:'wrap',gap:4}}>
         <div><span style={{fontFamily:FD,fontSize:13,color:accent}}>⚡ Potential Man</span> <span style={{fontSize:8,color:'#555'}}>Lv.{potLv}</span></div>
         <div style={{display:'flex',gap:8,fontSize:10,alignItems:'center',flexWrap:'wrap'}}>
           <span>❤️{player?.hp}/{player?.maxHp}</span><span>💰{gold}</span><span>⚡{maxEnergy}</span><span>📖{deck.length} powers</span>
-          {relics.length>0&&<span title="Gadgets">{relics.map(r=>r.icon).join('')}</span>}
+          <span style={{display:'flex',alignItems:'center',gap:3}}>
+            <span style={{fontFamily:FD,fontSize:8,color:alignColor}}>{alignment==='hero'?'⚔️':'💀'}</span>
+            <div style={{width:48,height:6,background:'#1a1a2a',borderRadius:3,overflow:'hidden',border:'1px solid #333'}}>
+              <div style={{height:'100%',width:`${evilness}%`,background:`linear-gradient(90deg,#33aaff,${evilness<50?'#33aaff':'#ff3366'})`,borderRadius:3,transition:'width 0.5s'}}/>
+            </div>
+            <span style={{fontFamily:FD,fontSize:7,color:alignColor}}>{alignLabel}</span>
+          </span>
+          {relics.length>0&&<span title="Amps">{relics.map(r=>r.icon).join('')}</span>}
           <button onClick={(e)=>{e.stopPropagation();setTooltip(null);setShowCodex(p=>!p);}} style={{fontFamily:FD,fontSize:8,padding:'1px 5px',background:`${accent}22`,border:`1px solid ${accent}44`,borderRadius:3,color:accent,cursor:'pointer'}}>📋</button>
         </div>
       </div>
       {showCodex&&<div style={{position:'fixed',inset:0,background:'#000c',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:12}} onClick={()=>{setShowCodex(false);setTooltip(null);}}>
         <div style={{background:bg2,border:`2px solid ${accent}44`,borderRadius:12,padding:16,maxWidth:460,maxHeight:'80vh',overflow:'auto',width:'100%'}} onClick={e=>e.stopPropagation()}>
-          {copiedAbilities.map((a,i)=> <div key={i} style={{fontSize:9,color:'#aaa',padding:'2px 0'}}>{a.icon} {a.sig} <KW k={a.kw}/> — {a.name}</div>)}
-          {relics.length>0&&<div style={{marginTop:6,borderTop:'1px solid #333',paddingTop:4}}><div style={{fontFamily:FD,fontSize:8,color:'#ffaa33',marginBottom:2}}>GADGETS</div>{relics.map((r,i)=> <div key={i} style={{fontSize:9,color:'#888'}}>{r.icon} {r.name}: {r.desc}</div>)}</div>}
-          <button onClick={()=>setShowCodex(false)} style={{marginTop:6,fontFamily:FD,fontSize:11,padding:'3px 14px',background:'#333',border:`1px solid ${accent}`,borderRadius:4,color:'#fff',cursor:'pointer'}}>CLOSE</button>
+          <div style={{display:'flex',gap:4,marginBottom:10,borderBottom:`1px solid ${accent}22`,paddingBottom:6}}>
+            {['powers','stats'].map(tab=><button key={tab} onClick={()=>setCodexTab(tab)} style={{fontFamily:FD,fontSize:10,padding:'3px 12px',background:codexTab===tab?`${accent}33`:'#1a1a2a',border:`1px solid ${codexTab===tab?accent:`${accent}33`}`,borderRadius:4,color:codexTab===tab?accent:'#555',cursor:'pointer',textTransform:'uppercase'}}>{tab==='powers'?'⚡ Superpowers':'📊 Stats'}</button>)}
+          </div>
+          {codexTab==='powers'&&<>
+            {copiedAbilities.length===0&&<div style={{fontSize:9,color:'#444',fontFamily:FB}}>No superpowers acquired yet.</div>}
+            {copiedAbilities.map((a,i)=> <div key={i} style={{fontSize:9,color:'#aaa',padding:'2px 0'}}>{a.icon} {a.sig} <KW k={a.kw}/> — {a.name}</div>)}
+            {relics.length>0&&<div style={{marginTop:6,borderTop:'1px solid #333',paddingTop:4}}><div style={{fontFamily:FD,fontSize:8,color:'#ffaa33',marginBottom:2}}>AMPS</div>{relics.map((r,i)=> <div key={i} style={{fontSize:9,color:'#888'}}>{r.icon} {r.name}: {r.desc}</div>)}</div>}
+          </>}
+          {codexTab==='stats'&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 12px'}}>
+            {[['❤️ HP',`${player?.hp} / ${player?.maxHp}`],['⚡ Max Energy',maxEnergy],['💰 Gold',gold],['🎯 Crit Chance',`${player?.critChance||10}%`],['📖 Deck Size',deck.length],['🏆 Floor',curFloor],['⚔️ Level',potLv],['✨ Superpowers',copiedAbilities.length],['🎒 Amps',relics.length]].map(([k,v])=>
+              <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'3px 0',borderBottom:'1px solid #1a1a2a'}}>
+                <span style={{fontFamily:FB,fontSize:9,color:'#666'}}>{k}</span>
+                <span style={{fontFamily:FD,fontSize:10,color:accent}}>{v}</span>
+              </div>)}
+          </div>}
+          <button onClick={()=>setShowCodex(false)} style={{marginTop:10,fontFamily:FD,fontSize:11,padding:'3px 14px',background:'#333',border:`1px solid ${accent}`,borderRadius:4,color:'#fff',cursor:'pointer'}}>CLOSE</button>
         </div>
       </div>}
       {mapLog.length>0&&<div style={{maxWidth:500,margin:'0 auto 5px',padding:'3px 10px',background:`${accent}08`,border:`1px solid ${accent}22`,borderRadius:5,fontSize:9,textAlign:'center',color:'#999'}}>{mapLog[mapLog.length-1]}</div>}
       <h3 style={{fontFamily:FD,fontSize:14,textAlign:'center',color:accent,margin:'0 0 6px',letterSpacing:2}}>Floor {curFloor}</h3>
-      <div style={{maxWidth:500,margin:'0 auto',display:'flex',flexDirection:'column-reverse',gap:3}}>
-        {hexMap?.map((fn,fi)=>{const[cf]=(curNodeId||'0-0').split('-').map(Number);const co=curNodeId?hexMap[cf]?.find(n=>n.id===curNodeId):null;
+      <div style={{maxWidth:500,margin:'0 auto',display:'flex',flexDirection:'column-reverse',gap:0}}>
+        {hexMap?.map((fn,fi)=>{
+          const[cf]=(curNodeId||'0-0').split('-').map(Number);
+          const co=curNodeId?hexMap[cf]?.find(n=>n.id===curNodeId):null;
           const isMerge=fn.length===1&&fi>0&&fi<(hexMap?.length||1)-1&&fi!==13&&fi!==14;
-          return <div key={fi} style={{display:'flex',justifyContent:'center',gap:8,alignItems:'center'}}>
+          const nextFloor=hexMap[fi+1];
+          // Connector strip: shows which nodes in the NEXT floor each current-floor node connects to
+          const connectorRow=nextFloor&&<div key={`conn-${fi}`} style={{display:'flex',justifyContent:'center',gap:8,alignItems:'center',height:10,marginLeft:24}}>
+            {nextFloor.map((nxt,ni)=>{
+              const isCurPath=co?.conns?.includes(nxt.id);
+              const anyPath=fn.some(n=>n.conns?.includes(nxt.id));
+              const nc=NC[nxt.type]||'#555';
+              return <div key={ni} style={{width:42,height:6,borderRadius:3,
+                background:isCurPath?`${nc}cc`:anyPath?`${nc}22`:'#1a1a2a22',
+                boxShadow:isCurPath?`0 0 8px ${nc}88`:undefined,
+                transition:'background 0.3s',
+              }}/>;
+            })}
+          </div>;
+          const floorRow=<div key={fi} style={{display:'flex',justifyContent:'center',gap:8,alignItems:'center',marginBottom:3}}>
             <div style={{width:16,fontSize:7,color:isMerge?accent:'#333',fontFamily:FD,textAlign:'right'}}>{isMerge?'◆':fi}</div>
             {fn.map(node=>{const reach=co?.conns?.includes(node.id);const isCur=node.id===curNodeId;const nc=NC[node.type]||'#555';
               return <div key={node.id} onClick={()=>reach?selectNode(node.id):null} style={{
                 width:42,height:42,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                background:isCur?`${nc}20`:node.visited?'#1a1a2a':reach?`${nc}08`:'#0a0a12',
-                border:`2px solid ${isCur?nc:reach?`${nc}88`:node.visited?'#333':'#1a1a22'}`,
-                cursor:reach?'pointer':'default',opacity:!reach&&!node.visited&&!isCur?0.15:1,transition:'all 0.2s',
-              }} onMouseEnter={e=>{if(reach){e.currentTarget.style.transform='scale(1.15)';e.currentTarget.style.boxShadow=`0 0 12px ${nc}44`;}}}
+                background:isCur?`${nc}28`:node.visited?'#1a1a2a':reach?`${nc}10`:'#0a0a12',
+                border:`2px solid ${isCur?nc:reach?nc:node.visited?'#333':'#1a1a22'}`,
+                cursor:reach?'pointer':'default',
+                opacity:!reach&&!node.visited&&!isCur?0.15:1,
+                transition:'all 0.2s',
+                animation:reach&&!isCur?'pulse 2s ease-in-out infinite':undefined,
+              }} onMouseEnter={e=>{if(reach){e.currentTarget.style.transform='scale(1.15)';e.currentTarget.style.boxShadow=`0 0 14px ${nc}88`;}}}
                  onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='';}}>
-                <div style={{fontSize:14}}>{NI[node.type]}</div><div style={{fontSize:5,color:nc,fontFamily:FD}}>{node.type.toUpperCase()}</div>
+                <div style={{fontSize:14}}>{NI[node.type]}</div>
+                <div style={{fontSize:5,color:isCur||reach?nc:'#444',fontFamily:FD,letterSpacing:0.5}}>{node.type.toUpperCase()}</div>
+                {reach&&<div style={{fontSize:4,color:nc,fontFamily:FD,letterSpacing:0.5}}>TAP</div>}
               </div>;})}
-          </div>;})}
+          </div>;
+          // In column-reverse layout: connector appears between this floor (below) and next floor (above)
+          return [floorRow, connectorRow].filter(Boolean);
+        })}
       </div>
       <details style={{maxWidth:500,margin:'10px auto 0'}}><summary style={{cursor:'pointer',fontFamily:FD,color:accent,fontSize:10}}>📖 Superpowers ({deck.length})</summary>
         <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:6,justifyContent:'center'}}>{deck.map(c=> <Card key={c.id} card={c}/>)}</div></details>
-      {pendingBattle&&<div style={{position:'fixed',inset:0,background:'#000d',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:12}}>
-        <div style={{background:bg2,border:`2px solid ${pendingBattle.en.color}`,borderRadius:12,padding:20,maxWidth:380,width:'100%',textAlign:'center',animation:'fadeUp 0.3s'}}>
-          <h2 style={{fontFamily:FD,fontSize:20,color:pendingBattle.en.color,margin:'4px 0'}}>{pendingBattle.en.Name}</h2>
-          <HpBar hp={pendingBattle.en.gameHp} max={pendingBattle.en.gameMaxHp} color={pendingBattle.en.color} h={11}/>
-          <div style={{margin:'6px 0',padding:'5px 8px',background:`${accent}08`,border:`1px solid ${accent}33`,borderRadius:6}}>
-            <div style={{fontFamily:FD,fontSize:8,color:accent}}>🔓 WIN TO UNLOCK SUPERPOWER:</div>
-            <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center',marginTop:2}}>
-              <span style={{fontSize:16}}>{pendingBattle.en.signature.icon}</span>
-              <div style={{textAlign:'left'}}><div style={{fontFamily:FD,fontSize:11,color:'#fff'}}>{pendingBattle.en.signature.name} <KW k={pendingBattle.en.signature.keyword}/>{pendingBattle.en.signature.charge&&<span style={{color:'#ffaa33',fontSize:8}}> ⏳</span>}</div>
-                <div style={{fontSize:8,color:'#aaa'}}>{pendingBattle.en.signature.desc}</div>
-                <div style={{fontSize:7,color:'#666'}}>Shape: {pendingBattle.en.signature.shape} · {'★'.repeat(pendingBattle.en.signature.tier)}</div></div>
+      {pendingBattle&&(()=>{const en=pendingBattle.en;const ec=en.color;const isVillain=en.isVillain==='True';
+        const statKeys=[['PWR',en.Power],['STR',en.Strength],['MAG',en.Magic],['INT',en.Intelligence],['SPD',en.Speed],['DEF',en.Defense],['POI',en.Poison]];
+        const maxStat=Math.max(...statKeys.map(([,v])=>parseInt(v)||0),1);
+        return <div style={{position:'fixed',inset:0,background:'#000e',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:12}}>
+        <div style={{background:bg2,border:`3px solid ${ec}`,borderRadius:14,padding:20,maxWidth:440,width:'100%',animation:'fadeUp 0.3s',boxShadow:`0 0 40px ${ec}44`}}>
+          {/* VS header */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div style={{textAlign:'center',flex:1}}>
+              <div style={{fontFamily:FD,fontSize:11,color:accent,letterSpacing:2}}>⚡ YOU</div>
+              <div style={{fontFamily:FD,fontSize:14,color:'#fff'}}>Potential Man</div>
+              <div style={{fontFamily:FB,fontSize:9,color:'#888'}}>Lv.{potLv} · {player?.hp}/{player?.maxHp} HP · {player?.def||2} DEF</div>
+            </div>
+            <div style={{fontFamily:FD,fontSize:22,color:'#ff336688',padding:'0 10px'}}>VS</div>
+            <div style={{textAlign:'center',flex:1}}>
+              <div style={{fontFamily:FD,fontSize:11,color:ec,letterSpacing:2}}>{isVillain?'💀 VILLAIN':'⚔️ HERO'}</div>
+              <div style={{fontFamily:FD,fontSize:14,color:ec}}>{en.Name}</div>
+              <div style={{fontFamily:FB,fontSize:9,color:'#888'}}>{en.effectiveClass?.toUpperCase()} · {en.gameHp} HP</div>
             </div>
           </div>
-          <div style={{display:'flex',gap:6,justifyContent:'center',marginTop:6}}>
-            <button onClick={commitBattle} style={{fontFamily:FD,fontSize:15,padding:'6px 24px',background:'linear-gradient(135deg,#ff3366,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer'}}>FIGHT</button>
-            <button onClick={()=>setPendingBattle(null)} style={{fontFamily:FD,fontSize:11,padding:'6px 12px',background:'#222',border:'1px solid #444',borderRadius:8,color:'#888',cursor:'pointer'}}>BACK</button>
+          <HpBar hp={en.gameHp} max={en.gameMaxHp} color={ec} h={10}/>
+          {/* Enemy stats grid */}
+          <div style={{margin:'10px 0',display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3}}>
+            {statKeys.map(([label,rawVal])=>{const v=parseInt(rawVal)||0;const pct=v/maxStat;
+              return <div key={label} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                <div style={{width:8,height:40,background:'#1a1a2a',borderRadius:4,overflow:'hidden',border:'1px solid #333',position:'relative'}}>
+                  <div style={{position:'absolute',bottom:0,width:'100%',height:`${pct*100}%`,background:pct>0.7?ec:pct>0.4?`${ec}88`:`${ec}44`,borderRadius:4,transition:'height 0.4s'}}/>
+                </div>
+                <span style={{fontFamily:FD,fontSize:6,color:'#666'}}>{label}</span>
+                <span style={{fontFamily:FD,fontSize:7,color:pct>0.6?ec:'#555'}}>{v}</span>
+              </div>;})}
+          </div>
+          {/* Signature card teaser */}
+          <div style={{padding:'6px 8px',background:`${ec}10`,border:`1px solid ${ec}33`,borderRadius:6,marginBottom:10}}>
+            <div style={{fontFamily:FD,fontSize:7,color:'#555',letterSpacing:1,marginBottom:3}}>🔓 DEFEAT TO UNLOCK:</div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:18}}>{en.signature.icon}</span>
+              <div><div style={{fontFamily:FD,fontSize:10,color:'#fff'}}>{en.signature.name} <KW k={en.signature.keyword}/>{en.signature.charge&&<span style={{color:'#ffaa33',fontSize:8}}> ⏳</span>}</div>
+                <div style={{fontSize:8,color:'#aaa'}}>{en.signature.desc}</div></div>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:6,justifyContent:'center'}}>
+            <button onClick={commitBattle} style={{fontFamily:FD,fontSize:15,padding:'7px 30px',background:`linear-gradient(135deg,${ec},${isVillain?'#880022':'#0044aa'})`,border:'2px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer',boxShadow:`0 0 20px ${ec}44`}}>FIGHT</button>
+            <button onClick={()=>setPendingBattle(null)} style={{fontFamily:FD,fontSize:11,padding:'7px 14px',background:'#222',border:'1px solid #444',borderRadius:8,color:'#888',cursor:'pointer'}}>BACK</button>
           </div>
         </div>
-      </div>}
+      </div>;})()}
     </div>);
 
   // ═══ BATTLE ═══
@@ -793,14 +1129,29 @@ export default function ComicSpire(){
     return (
       <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined}}>
         <style>{CSS}</style><TooltipOverlay/>
-        {slatePreview.length>0&&<div style={{position:'fixed',inset:0,background:'#000a',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',gap:8,flexWrap:'wrap',padding:16,pointerEvents:'none'}}>
-          {slatePreview.map(p=><div key={p.id} style={{background:'#111',border:'2px solid #fff3',borderRadius:8,padding:6,textAlign:'center',minWidth:110}}>
-            <div style={{fontFamily:FD,fontSize:9,color:'#ffd700',marginBottom:3}}>PAGE {p.id+1}</div>
-            <img src={`/assets/Bubble_Comic_Slate_${p.slateIndex}.png`} alt={`Page ${p.id+1} slate`} style={{width:92,height:92,objectFit:'cover',borderRadius:4,border:'1px solid #444'}}/>
-            <div style={{fontFamily:FB,fontSize:9,color:'#bbb',marginTop:3}}>{p.cards} card{p.cards===1?'':'s'}</div>
-          </div>)}
+        {slatePreview.length>0&&<div style={{position:'fixed',inset:0,background:'#000d',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+          {/* Outer page wrapper — single unified comic page */}
+          <div style={{position:'relative',borderRadius:10,overflow:'hidden',border:'4px solid #111',boxShadow:'0 0 60px #0008,0 0 0 1px #333',background:'#111'}}>
+            {/* 2x2 cell grid — gap acts as gutter strip */}
+            <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},145px)`,gridTemplateRows:`repeat(${ROWS},145px)`,gap:3,background:'#111'}}>
+            {slatePreview.map((cell,idx)=>{
+              const FLASH={attack:{c:'#ff2244',label:'ATTACK!'},magic:{c:'#aa33ff',label:'MAGIC!'},defend:{c:'#2266ff',label:'DEFEND!'},poison:{c:'#22cc44',label:'POISON!'},rage:{c:'#ff5500',label:'RAGE!'},heal:{c:'#22ccaa',label:'HEAL!'},draw:{c:'#11ccff',label:'DRAW!'}};
+              const cfg=FLASH[cell?.type]||FLASH.attack;
+              return <div key={idx} style={{position:'relative',overflow:'hidden',background:cell?cfg.c:'#0d0d0d',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6}}>
+                {cell&&<>
+                  <span style={{fontSize:48,lineHeight:1,filter:'drop-shadow(0 3px 10px #0009)'}}>{cell.icon||'⚡'}</span>
+                  <span style={{fontFamily:FD,fontSize:14,color:'#fff',letterSpacing:3,textShadow:'0 0 10px #000,0 2px 4px #000',fontWeight:700}}>{cfg.label}</span>
+                </>}
+                {!cell&&<span style={{fontFamily:FD,fontSize:18,color:'#1a1a1a'}}>—</span>}
+              </div>;
+            })}
+            </div>
+            {/* Single PNG overlay spanning the full 2x2 page */}
+            <img src="/assets/Bubble_Comic_Slate_4.png" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',opacity:0.6,pointerEvents:'none'}}/>
+          </div>
         </div>}
         {floaters.map(f=> <div key={f.id} style={{position:'fixed',left:`${f.x}%`,top:`${f.y}%`,pointerEvents:'none',zIndex:100,fontFamily:FD,fontSize:18,color:f.color,textShadow:'2px 2px 0 #000',animation:'floatDmg 1.4s ease-out forwards'}}>{f.text}</div>)}
+        {damageFlash&&<div style={{position:'fixed',inset:0,background:'#ff0000',pointerEvents:'none',zIndex:160,animation:'dmgFlash 0.5s ease-out forwards',boxShadow:'inset 0 0 80px #ff0000'}}/>}
         {/* Combatants */}
         <div style={{display:'flex',justifyContent:'space-between',gap:8,marginBottom:5,flexWrap:'wrap'}}>
           <div style={{flex:1,minWidth:150,padding:'5px 8px',background:'#00000066',borderRadius:8,border:`1px solid ${accent}22`}}>
@@ -808,16 +1159,19 @@ export default function ComicSpire(){
             <HpBar hp={player?.hp||0} max={player?.maxHp||1} color="#ff4455"/>
             <div style={{display:'flex',gap:4,marginTop:3,fontSize:9,flexWrap:'wrap',alignItems:'center'}}>
               <div style={{display:'flex',gap:1}}>{Array(battle.maxEnergy).fill(0).map((_,i)=> <div key={i} style={{width:12,height:12,borderRadius:'50%',background:i<battle.energy?'linear-gradient(135deg,#ffcc33,#ff8800)':'#222',border:`1px solid ${i<battle.energy?'#ffdd55':'#333'}`}}/>)}</div>
+              {(player?.def||0)>0&&<span style={{color:'#aaaaff',fontSize:8}}>🔰{player.def}</span>}
               {battle.playerBlock>0&&<span style={{color:'#4499ff'}}>🛡️{battle.playerBlock}</span>}
               {battle.momentum>0&&<span style={{color:'#33ddff'}}>⚡{battle.momentum}{battle.momentum>=momT&&!battle.momentumUsed?' FREE!':''}</span>}
               {battle.channelStacks>0&&<span style={{color:'#bb55ff'}}>✨{battle.channelStacks}</span>}
               {battle.comboCount>0&&<span style={{color:'#ff4455'}}>⚔×{battle.comboCount}</span>}
-              {(player?.hp||0)<(player?.maxHp||1)*(hasR('despUp')?0.4:0.3)&&<span style={{color:'#ff3333',fontFamily:FD}}>🔥2×</span>}
             </div>
           </div>
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}><div style={{fontFamily:FD,fontSize:16,color:'#ff336666'}}>VS</div><div style={{fontSize:7,color:'#444',fontFamily:FD}}>T{battle.turn}</div></div>
           {en&&<div style={{flex:1,minWidth:150,padding:'5px 8px',background:'#00000066',borderRadius:8,border:`1px solid ${en.color}22`}}>
-            <div style={{fontFamily:FD,fontSize:12,color:en.color}}>{en.isBoss?'👑':en.isElite?'💀':''}{en.Name}</div>
+            <div style={{fontFamily:FD,fontSize:12,color:en.color}}>
+              {en.effectiveClass==='boss'?'👑 ':en.effectiveClass==='elite'?'💀 ':'⚔️ '}{en.Name}
+              {en.effectiveClass!=='normal'&&<span style={{fontSize:7,color:'#888',fontFamily:FB,marginLeft:4}}>[{en.effectiveClass?.toUpperCase()}]</span>}
+            </div>
             <HpBar hp={en.gameHp} max={en.gameMaxHp} color={en.color}/>
             <div style={{display:'flex',gap:4,marginTop:2,justifyContent:'flex-end',fontSize:8}}>
               {en.block>0&&<span style={{color:'#4499ff'}}>🛡️{en.block}</span>}
@@ -827,14 +1181,14 @@ export default function ComicSpire(){
           </div>}
         </div>
 
-        {/* PLAYER + ENEMY PANELS (2x2 each) */}
-        <div style={{display:'flex',gap:8,justifyContent:'center',alignItems:'stretch',flexWrap:'wrap',marginBottom:4}}>
+        {/* PLAYER + ENEMY PANELS (2x2 each) + LOG */}
+        <div style={{display:'flex',gap:8,justifyContent:'center',alignItems:'flex-start',flexWrap:'wrap',marginBottom:4}}>
         <div style={{background:'#f5f0e8',borderRadius:8,padding:6,width:280,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
           <div style={{position:'absolute',inset:0,borderRadius:4,opacity:0.03,backgroundImage:'radial-gradient(circle,#000 0.5px,transparent 0.5px)',backgroundSize:'6px 6px',pointerEvents:'none'}}/>
           <div style={{fontFamily:FD,fontSize:7,color:'#888',textAlign:'center',marginBottom:3,letterSpacing:2}}>
             {totalPlacedCount>0?`${totalPlacedCount} cards across ${totalPageCount} page${totalPageCount===1?'':'s'} — END TURN to resolve ↘`:
               battle.activeCharges.length>0?`⏳ ${battle.activeCharges.length} charge(s) ready — will fire on END TURN`:
-              '★ PLAYER 2x2 PANELS ★'}
+              '★ CREATE YOUR PANEL ★'}
           </div>
           <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},64px)`,gap:4}}>
             {battle.page.map((row,ri)=>row.map((cell,ci)=>{
@@ -845,69 +1199,82 @@ export default function ComicSpire(){
               const kInfo=pl?KW_INFO[pl.keyword]:null;
               const tc=kInfo?.color||TC[pl?.type]||'#ccc';
               const order=ri*COLS+ci+1;
-              const panelBg=PLAYER_PANEL_ASSETS[order-1]||'';
+              const shortName=pl?(pl.name.split("'s ")[1]||pl.name):'';
+              const cardDesc=pl?({attack:`${pl.value} dmg`,magic:pl.keyword==='channel'||pl.keyword==='overchannel'?`${pl.value} pierce`:`${pl.value} magic`,defend:`+${pl.value} blk`,poison:pl.keyword==='corrode'?`${pl.value} corrode`:`${pl.value} poison`,heal:`heal ${pl.value}`,rage:pl.keyword==='blood'?`${pl.value} rage!`:`${pl.value} rage`,draw:`draw +${pl.value}`}[pl.type]||`${pl.value}`):'';
               return <div key={key} onClick={()=>isV&&selCard?placeCard(selCard,ri,ci):null} style={{
-                backgroundImage:panelBg?`url(${panelBg})`:undefined,
-                backgroundSize:'cover',
-                backgroundPosition:'center',
-                backgroundColor:pl?(isCharging?'#fff8ee':'#ffffff'):(isV?'#fffbe6':'#faf8f2'),
-                backgroundBlendMode:'multiply',
-                border:`2px solid ${pl?(isCharging?'#ffaa33':tc):isV?'#ddaa33':'#e0ddd6'}`,borderRadius:4,
+                backgroundColor:isV?'#fffbe6':'#faf8f2',
+                border:`2px solid ${isV?'#ddaa33':'#e0ddd6'}`,borderRadius:4,
                 display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
                 cursor:isV?'pointer':'default',transition:'all 0.15s',position:'relative',
                 animation:isCharging?'chargeGlow 2s ease-in-out infinite':undefined,
+                overflow:'hidden',
               }}>
                 <div style={{position:'absolute',top:1,left:3,fontSize:7,color:'#ccc',fontFamily:FD}}>{order}</div>
-                {isActive&&<div style={{position:'absolute',top:1,right:3,fontSize:7,color:'#ffaa33',fontFamily:FD}}>⏳READY</div>}
-                {isCharging&&!isActive&&<div style={{position:'absolute',top:1,right:3,fontSize:7,color:'#ff8800',fontFamily:FD}}>⏳NEXT</div>}
-                {pl?(<><div style={{fontSize:16}}>{pl.icon}</div><div style={{fontFamily:FD,fontSize:7,color:isCharging?'#cc8800':'#333',textAlign:'center',lineHeight:1}}>{(pl.name.split("'s ")[1]||pl.name).slice(0,10)}</div><div style={{fontSize:7,color:tc,fontWeight:700}}>{pl.value}</div></>)
-                :isV? <div style={{fontSize:10,color:'#bb8833',fontFamily:FD}}>✦</div>:null}
+                {pl?(<div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'4px 6px',background:`${isCharging?'#ffaa33':tc}18`,border:`1px solid ${isCharging?'#ffaa33':tc}44`,borderRadius:5,lineHeight:1,maxWidth:'94%'}}>
+                  <span style={{fontSize:18,filter:isCharging?'drop-shadow(0 0 4px #ffaa33)':undefined}}>{pl.icon}</span>
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:1}}>
+                    <span style={{color:'#555',fontFamily:FD,fontSize:8,lineHeight:1.1}}>{shortName.length>12?shortName.slice(0,10)+'…':shortName}</span>
+                    <span style={{color:isCharging?'#cc7700':tc,fontFamily:FB,fontSize:10,fontWeight:700}}>{cardDesc}{isActive?' ⏳':isCharging?' …':''}</span>
+                  </div>
+                </div>)
+                :isV?<div style={{fontSize:10,color:'#bb8833',fontFamily:FD}}>✦</div>:null}
               </div>;}))}
           </div>
         </div>
 
         <div style={{background:'#101017',borderRadius:8,padding:6,width:280,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
           <div style={{fontFamily:FD,fontSize:7,color:'#888',textAlign:'center',marginBottom:3,letterSpacing:2}}>
-            ENEMY 2x2 INTENT · visible {visibleEnemyPanels}/4
+            ENEMY PLAN · Panel {battle.enemyPlanIdx+1} acts this turn · {visibleEnemyPanels}/{battle.enemyPlan.length} revealed
           </div>
           <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},64px)`,gap:4}}>
             {battle.enemyPlan.map((intentCard,idx)=>{
               const reveal=idx<visibleEnemyPanels;
-              const panelBg=ENEMY_PANEL_ASSETS[idx]||'';
+              const isNow=idx===battle.enemyPlanIdx;
+              const intentBg={attack:'#200808',magic:'#120820',channel:'#0e0620',defend:'#080e1a',buff:'#111108',poison:'#081408',corrode:'#060f04',heal:'#062010',shieldbash:'#080e20',catalyze:'#0d1400'}[intentCard.intent]||'#111';
               return <div key={`intent-${idx}`} style={{
-                border:`2px solid ${reveal?'#555':'#2a2a2a'}`,
+                border:`2px solid ${isNow?'#ff5544':reveal?'#555':'#2a2a2a'}`,
+                boxShadow:isNow?'0 0 8px #ff554466':undefined,
                 borderRadius:4,
                 position:'relative',
                 display:'flex',
                 alignItems:'center',
                 justifyContent:'center',
-                backgroundImage:panelBg?`url(${panelBg})`:undefined,
-                backgroundSize:'cover',
-                backgroundPosition:'center',
-                backgroundColor:reveal?'#111':'#090909',
-                backgroundBlendMode:'multiply',
+                backgroundColor:reveal?intentBg:'#090909',
+                overflow:'hidden',
               }}>
-                <div style={{position:'absolute',top:1,left:3,fontSize:7,color:'#aaa',fontFamily:FD}}>{idx+1}</div>
-                {reveal?<IntentBox intent={intentCard.intent} val={intentCard.intentVal} weak={en.weakened} compact/>:<div style={{fontSize:11,color:'#666',fontFamily:FD}}>??</div>}
+                <div style={{position:'absolute',top:1,left:3,fontSize:7,color:isNow?'#ff5544':'#aaa',fontFamily:FD}}>{isNow?'▶':''}{ idx+1}</div>
+                {reveal?<IntentBox intent={intentCard.intent} val={intentCard.intentVal} weak={en.weakened} compact card={intentCard}/>:<div style={{fontSize:11,color:'#666',fontFamily:FD}}>??</div>}
               </div>;
             })}
           </div>
         </div>
+
         </div>
 
-        <div ref={logRef} style={{maxWidth:380,width:'100%',margin:'0 auto 3px',padding:'2px 6px',background:'#00000044',borderRadius:4,fontSize:7,color:'#555',maxHeight:32,overflowY:'auto',lineHeight:1.4}}>
-          {battle.log.slice(-4).map((m,i)=> <div key={i}>{m}</div>)}
-        </div>
-
+        {showLog&&<div onClick={()=>setShowLog(false)} style={{position:'fixed',inset:0,background:'#000c',zIndex:190,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#111',border:'2px solid #333',borderRadius:8,padding:'10px 14px',width:340,maxHeight:'75vh',overflowY:'auto',fontFamily:FB,fontSize:8,color:'#555',lineHeight:1.8}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+              <span style={{fontFamily:FD,fontSize:10,color:'#888',letterSpacing:2}}>FULL COMBAT LOG</span>
+              <button onClick={()=>setShowLog(false)} style={{background:'none',border:'none',color:'#555',fontSize:14,cursor:'pointer',lineHeight:1}}>✕</button>
+            </div>
+            {[...battle.log].reverse().map((m,i)=><div key={i} style={{color:i===0?'#ccc':'#555',borderBottom:'1px solid #1a1a1a',paddingBottom:2,marginBottom:2}}>{m}</div>)}
+          </div>
+        </div>}
+        {/* Per-turn log strip */}
+        {battle.log.slice(battle.turnLogStart).length>0&&<div style={{marginBottom:3,padding:'3px 8px',background:'#00000044',borderRadius:4,fontSize:7,color:'#555',fontFamily:FB,lineHeight:1.7,display:'flex',flexWrap:'wrap',gap:'0 10px',alignItems:'center'}}>
+          <span style={{fontFamily:FD,fontSize:6,color:'#333',letterSpacing:1,marginRight:4}}>T{battle.turn}</span>
+          {battle.log.slice(battle.turnLogStart).map((m,i,arr)=><span key={i} style={{color:i===arr.length-1?'#aaa':'#555'}}>{m}</span>)}
+        </div>}
         <div style={{marginBottom:4}}>
           <div style={{fontFamily:FD,fontSize:7,color:'#444',textAlign:'center',marginBottom:2,letterSpacing:1}}>
             {!isP?'⏳ Resolving...':selCard?`Panel use: ${panelSpanForCard(selCard)} ${selCard.charge?'(⏳ fires NEXT turn)':''} — click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
-            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.2s ${i*0.04}s ease both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)}/></div>)}
+            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.2s ${i*0.04}s ease both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
           </div>
         </div>
         <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center'}}>
+          <button onClick={()=>setShowLog(true)} style={{fontFamily:FD,fontSize:8,padding:'3px 10px',background:'#1a1a1a',border:'1px solid #333',borderRadius:4,color:'#555',cursor:'pointer',letterSpacing:1}}>📋 LOG</button>
           <button onClick={endTurn} disabled={!isP} style={{fontFamily:FD,fontSize:15,padding:'5px 28px',background:isP?(battle.placedCards.length+battle.activeCharges.length>0?'linear-gradient(135deg,#ff3366,#ff6600)':'#444'):'#222',border:`2px solid ${isP?'#fff':'#333'}`,borderRadius:7,color:isP?'#fff':'#555',cursor:isP?'pointer':'not-allowed'}}>
             {battle.activeCharges.length>0&&battle.placedCards.length===0?`FIRE ${battle.activeCharges.length} CHARGE(S)`:
               battle.placedCards.length>0?`RESOLVE ${battle.placedCards.length}${battle.activeCharges.length>0?'+'+battle.activeCharges.length+'⏳':''}`:
@@ -920,22 +1287,95 @@ export default function ComicSpire(){
 
   // ═══ REWARD ═══
   if(screen==='reward'){
-    if(rewardPhase==='card')return (
-      <div style={{minHeight:'100vh',background:bg1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:16,fontFamily:FB,color:'#fff'}}>
+    if(rewardPhase==='absorb'){
+      const MAX_ABSORB=3;
+      const enName=battle.enemy?.Name||'Enemy';
+      const enColor=battle.enemy?.color||accent;
+      const availableCards=rewardCards.filter(c=>!absorbedCardIds.includes(c.id));
+      const canAbsorb=absorbedCardIds.length<MAX_ABSORB;
+      const doAbsorbAdd=()=>{
+        if(!selectedAbsorbCard||!canAbsorb)return;
+        setDeck(p=>[...p,{...selectedAbsorbCard,id:uid()}]);
+        setAbsorbedCardIds(p=>[...p,selectedAbsorbCard.id]);
+        setSelectedAbsorbCard(null);};
+      const doAbsorbSwap=deckCard=>{
+        if(!selectedAbsorbCard||!canAbsorb)return;
+        setDeck(p=>[...p.filter(x=>x.id!==deckCard.id),{...selectedAbsorbCard,id:uid()}]);
+        setAbsorbedCardIds(p=>[...p,selectedAbsorbCard.id]);
+        setSelectedAbsorbCard(null);};
+      const doAbsorbDone=()=>{setSelectedAbsorbCard(null);setRewardPhase('relic');};
+      return (
+      <div style={{minHeight:'100vh',background:bg1,padding:'12px 16px',fontFamily:FB,color:'#fff',overflowY:'auto'}}>
         <style>{CSS}</style><TooltipOverlay/>
-        <h2 style={{fontFamily:FD,fontSize:22,color:'#ffd700',marginBottom:2}}>🏆 {battle.enemy?.Name} DEFEATED!</h2>
-        <div style={{fontFamily:FD,fontSize:12,color:accent,marginBottom:8}}>🔓 PICK A SUPERPOWER (1 of 3)</div>
-        <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>
-          {rewardCards.map((c,i)=> <div key={c.id} style={{animation:`fadeUp 0.3s ${i*0.1}s ease both`,opacity:0,position:'relative'}}>
-            {i===0&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:FD,fontSize:6,color:'#ffd700',background:'#000',padding:'0 4px',borderRadius:2,border:'1px solid #ffd70044',zIndex:1}}>SIGNATURE</div>}
-            <Card card={c} onClick={card=>pickRewardCard(card)}/></div>)}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+          <h2 style={{fontFamily:FD,fontSize:18,color:'#ffd700',margin:0}}>🏆 {enName} Defeated!</h2>
+          <button onClick={doAbsorbDone} style={{fontFamily:FD,fontSize:11,padding:'5px 14px',background:'linear-gradient(135deg,#ffaa33,#ff6600)',border:'2px solid #fff',borderRadius:6,color:'#fff',cursor:'pointer'}}>
+            Done → Amp
+          </button>
         </div>
-        <button onClick={()=>pickRewardCard(null)} style={{fontFamily:FD,fontSize:10,padding:'4px 14px',background:'#222',border:'1px solid #444',borderRadius:4,color:'#555',cursor:'pointer'}}>Skip →</button>
-      </div>);
+        <div style={{fontFamily:FD,fontSize:9,color:enColor,marginBottom:8}}>
+          {!canAbsorb?`Max absorbs reached (${MAX_ABSORB}/3) — click Done to continue`:absorbedCardIds.length>0?`${absorbedCardIds.length}/${MAX_ABSORB} absorbed — keep going or click Done`:`Browse their deck. Select up to ${MAX_ABSORB} cards to absorb into your build.`}
+        </div>
+
+        {/* Three-column swap layout */}
+        <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+
+          {/* Col 1: Enemy deck */}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:FD,fontSize:8,color:'#555',letterSpacing:1,marginBottom:6}}>
+              {enName.toUpperCase()}'S DECK ({availableCards.length} · {absorbedCardIds.length} absorbed)
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+              {rewardCards.map((c,i)=>{
+                const taken=absorbedCardIds.includes(c.id);
+                const isSel=selectedAbsorbCard?.id===c.id;
+                const isSig=i===0;
+                return <div key={c.id} style={{position:'relative',opacity:taken?0.3:1,transition:'opacity 0.3s'}}>
+                  {isSig&&!taken&&<div style={{position:'absolute',top:-8,left:'50%',transform:'translateX(-50%)',fontFamily:FD,fontSize:6,color:'#ffd700',background:'#000',padding:'0 4px',borderRadius:2,border:'1px solid #ffd70044',zIndex:1,whiteSpace:'nowrap'}}>SIGNATURE</div>}
+                  {taken&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2,fontFamily:FD,fontSize:20,pointerEvents:'none'}}>✓</div>}
+                  <Card card={c} sel={isSel} dis={taken} onClick={taken?undefined:()=>setSelectedAbsorbCard(isSel?null:c)}/>
+                </div>;})}
+            </div>
+          </div>
+
+          {/* Col 2: Action panel */}
+          <div style={{flexShrink:0,width:140}}>
+            <div style={{fontFamily:FD,fontSize:8,color:'#555',letterSpacing:1,marginBottom:6}}>ACTION</div>
+            {selectedAbsorbCard
+              ? <div style={{padding:'8px 10px',background:`${enColor}0d`,border:`1px solid ${enColor}33`,borderRadius:6}}>
+                  <div style={{fontFamily:FD,fontSize:9,color:enColor,marginBottom:6}}>{selectedAbsorbCard.name}</div>
+                  <Card card={selectedAbsorbCard}/>
+                  <div style={{display:'flex',flexDirection:'column',gap:5,marginTop:8}}>
+                    <button onClick={doAbsorbAdd} disabled={!canAbsorb} style={{fontFamily:FD,fontSize:9,padding:'5px 0',background:canAbsorb?`${enColor}33`:'#222',border:`1px solid ${canAbsorb?enColor:'#444'}`,borderRadius:5,color:canAbsorb?'#fff':'#555',cursor:canAbsorb?'pointer':'not-allowed'}}>
+                      ✚ Add to deck
+                    </button>
+                    <button onClick={()=>setSelectedAbsorbCard(null)} style={{fontFamily:FD,fontSize:9,padding:'5px 0',background:'#1a1a2a',border:'1px solid #333',borderRadius:5,color:'#666',cursor:'pointer'}}>
+                      ✕ Cancel
+                    </button>
+                  </div>
+                  {canAbsorb&&<div style={{fontFamily:FD,fontSize:7,color:'#444',marginTop:8,letterSpacing:1,textAlign:'center'}}>— or click a card in Your Deck to swap —</div>}
+                  {!canAbsorb&&<div style={{fontFamily:FD,fontSize:7,color:'#ff4455',marginTop:6,letterSpacing:1}}>Absorb limit reached ({MAX_ABSORB}/3)</div>}
+                </div>
+              : <div style={{fontFamily:FD,fontSize:8,color:'#333',padding:'10px 0'}}>← select a card</div>}
+          </div>
+
+          {/* Col 3: Your deck */}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:FD,fontSize:8,color:'#555',letterSpacing:1,marginBottom:6}}>
+              YOUR DECK ({deck.length})
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+              {deck.map(c=><Card key={c.id} card={c} onClick={selectedAbsorbCard&&canAbsorb?()=>doAbsorbSwap(c):undefined} dis={!selectedAbsorbCard||!canAbsorb}/>)}
+            </div>
+          </div>
+
+        </div>
+      </div>);}
+
     if(rewardPhase==='relic')return (
       <div style={{minHeight:'100vh',background:bg1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:16,fontFamily:FB,color:'#fff'}}>
         <style>{CSS}</style><TooltipOverlay/>
-        <h2 style={{fontFamily:FD,fontSize:18,color:'#ffaa33',marginBottom:8}}>🎁 PICK A GADGET (1 of 3)</h2>
+        <h2 style={{fontFamily:FD,fontSize:18,color:'#ffaa33',marginBottom:8}}>🎁 PICK AN AMP (1 of 3)</h2>
         <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>
           {rewardRelics.map((r,i)=> <div key={r.id} style={{animation:`fadeUp 0.3s ${i*0.1}s ease both`,opacity:0}}><Relic relic={r} onClick={rel=>pickRewardRelic(rel)}/></div>)}
         </div>
@@ -949,7 +1389,7 @@ export default function ComicSpire(){
     <div style={{textAlign:'center',fontFamily:FD,fontSize:14,color:'#ffd700',marginBottom:10}}>💰{gold}</div>
     <div style={{fontFamily:FD,fontSize:10,color:'#666',textAlign:'center',marginBottom:4}}>SUPERPOWERS</div>
     <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>{shopItems.map(i=> <Card key={i.id} card={i} onClick={()=>{if(gold>=i.price){setGold(p=>p-i.price);setDeck(p=>[...p,{...i,id:uid()}]);setShopItems(p=>p.filter(x=>x.id!==i.id));}}} price={i.price} dis={gold<i.price}/>)}</div>
-    <div style={{fontFamily:FD,fontSize:10,color:'#666',textAlign:'center',marginBottom:4}}>GADGETS</div>
+    <div style={{fontFamily:FD,fontSize:10,color:'#666',textAlign:'center',marginBottom:4}}>AMPS</div>
     <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>{shopRelics.map(r=> <Relic key={r.id} relic={r} onClick={()=>{if(gold>=r.price){setGold(p=>p-r.price);applyRelic(r);setShopRelics(p=>p.filter(x=>x.id!==r.id));}}} price={r.price} dis={gold<r.price}/>)}</div>
     <div style={{textAlign:'center'}}><button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:12,padding:'5px 18px',background:'#222',border:`1px solid ${accent}`,borderRadius:6,color:'#fff',cursor:'pointer'}}>LEAVE →</button></div>
   </div>);
@@ -980,14 +1420,14 @@ export default function ComicSpire(){
   if(screen==='gameOver')return (
     <div style={{minHeight:'100vh',background:'radial-gradient(ellipse,#1a0000,#000)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
     <h1 style={{fontSize:40,color:'#ff3333',textShadow:'4px 4px 0 #000'}}>POTENTIAL LOST</h1>
-    <p style={{fontFamily:FB,color:'#555',marginBottom:14}}>Floor {curFloor} · {copiedAbilities.length} superpowers · {relics.length} gadgets</p>
+    <p style={{fontFamily:FB,color:'#555',marginBottom:14}}>Floor {curFloor} · {copiedAbilities.length} superpowers · {relics.length} Amps</p>
     <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'8px 24px',background:'linear-gradient(135deg,#ff3366,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer'}}>RETRY</button>
   </div>);
 
   if(screen==='victory')return (
     <div style={{minHeight:'100vh',background:'radial-gradient(ellipse,#0a1a0a,#000)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
     <h1 style={{fontSize:40,color:'#ffd700',textShadow:'4px 4px 0 #ff6600,8px 8px 0 #000',animation:'pulse 2s ease-in-out infinite'}}>POTENTIAL REALIZED</h1>
-    <p style={{fontFamily:FB,color:'#aaa',marginBottom:14}}>{copiedAbilities.length} superpowers · {relics.length} gadgets · Lv.{potLv}</p>
+    <p style={{fontFamily:FB,color:'#aaa',marginBottom:14}}>{copiedAbilities.length} superpowers · {relics.length} Amps · Lv.{potLv}</p>
     <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'8px 24px',background:'linear-gradient(135deg,#ffd700,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#000',cursor:'pointer'}}>AGAIN</button>
   </div>);
 
