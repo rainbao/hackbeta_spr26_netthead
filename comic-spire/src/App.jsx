@@ -961,7 +961,7 @@ export default function ComicSpire(){
   const showTip=useCallback((info)=>{setTooltip(info);setTimeout(()=>setTooltip(p=>p===info?null:p),3000);},[]);
   const KW=({k})=>{if(!k)return null;const info=KW_INFO[k];if(!info)return null;
     return <span onClick={(e)=>{e.stopPropagation();showTip(info);}} onMouseEnter={()=>showTip(info)} onMouseLeave={()=>setTooltip(null)}
-      style={{fontSize:9,padding:'1px 4px',borderRadius:2,background:`${info.color}22`,color:info.color,border:`1px solid ${info.color}44`,fontFamily:FD,letterSpacing:0.5,cursor:'help'}}>{info.name}</span>;};
+      style={{fontSize:9,padding:'0.5px 4px',lineHeight:1,borderRadius:2,background:`${info.color}22`,color:info.color,border:`1px solid ${info.color}44`,fontFamily:FD,letterSpacing:0.5,cursor:'help'}}>{info.name}</span>;};
 
   const HpBar=({hp,max,color,h=13})=> <div style={{position:'relative',height:h,background:'#1a1a2a',borderRadius:h/2,overflow:'hidden',border:'1px solid #333',minWidth:80}}><div style={{height:'100%',width:`${clamp(hp/max*100,0,100)}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:h/2,transition:'width 0.4s'}}/><div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:h*0.6,fontFamily:FB,fontWeight:700,color:'#fff',textShadow:'0 1px 2px #000'}}>{hp}/{max}</div></div>;
 
@@ -985,7 +985,8 @@ export default function ComicSpire(){
       </div>
       <div style={{height:28,display:'flex',alignItems:'center',justifyContent:'center',background:`radial-gradient(circle,${card.color}15,transparent)`,fontSize:20}}>{card.icon}</div>
       <div style={{padding:'3px 6px',flex:1}}>
-        <div style={{fontFamily:FD,fontSize:10,color:'#fff',lineHeight:1.2,marginBottom:2,display:'flex',alignItems:'center',gap:2,flexWrap:'wrap'}}>{card.name} <KW k={card.keyword}/></div>
+        <div style={{fontFamily:FD,fontSize:10,color:'#fff',lineHeight:1.2,marginBottom:2}}>{card.name}</div>
+        <div style={{display:'flex', justifyContent:'center',marginBottom:2}}><KW k={card.keyword}/></div>
         <div style={{fontFamily:FB,fontSize:10,color:'#aaa',lineHeight:1.3}}>{card.desc}</div>
       </div>
       <div style={{padding:'2px 6px 4px',borderTop:'1px solid #ffffff06'}}>
@@ -1468,8 +1469,7 @@ export default function ComicSpire(){
                 const taken=absorbedCardIds.includes(c.id);
                 const isSel=selectedAbsorbCard?.id===c.id;
                 const isSig=i===0;
-                return <div key={c.id} style={{position:'relative',opacity:taken?0.3:1,transition:'opacity 0.3s'}}>
-                  {isSig&&!taken&&<div style={{position:'absolute',top:-8,left:'50%',transform:'translateX(-50%)',fontFamily:FD,fontSize:6,color:'#ffd700',background:'#000',padding:'0 4px',borderRadius:2,border:'1px solid #ffd70044',zIndex:1,whiteSpace:'nowrap'}}>SIGNATURE</div>}
+                return <div key={c.id} style={{position:'relative',width:'max-content',justifySelf:'center',opacity:taken?0.3:1,transition:'opacity 0.3s',borderRadius:8,boxShadow:isSig&&!taken?'0 0 0 2px #ffd700aa, 0 0 16px #ffd70088':'none'}}>
                   {taken&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2,fontFamily:FD,fontSize:20,pointerEvents:'none'}}>✓</div>}
                   <Card card={c} sel={isSel} dis={taken} onClick={taken?undefined:()=>setSelectedAbsorbCard(isSel?null:c)}/>
                 </div>;})}
