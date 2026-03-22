@@ -3,6 +3,8 @@
 ## 1. Project Overview
 Potential Man is a single-player, comic-themed roguelike deckbuilder built in React. The core gameplay loop combines map navigation, tactical panel placement in a 2x2 combat grid, enemy deck simulation, card/amp rewards, and alignment-driven progression. The game emphasizes expressive keyword synergies (for example Combo, Channel, Blood, Corrode, and Momentum) and run-to-run variance through procedural map paths, randomized encounters, and dynamic enemy generation from CSV data.
 
+Vercel Link: https://potentialman.vercel.app/
+
 ## 2. Tech Stack and Runtime
 - Frontend framework: React (functional components + hooks)
 - Build tool: Vite
