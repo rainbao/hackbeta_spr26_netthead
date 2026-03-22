@@ -817,6 +817,7 @@ export default function ComicSpire(){
   const[shopRelics,setShopRelics]=useState([]);
   const[curEvent,setCurEvent]=useState(null);
   const[selectedCardId,setSelectedCardId]=useState(null);
+  const[focusedCell,setFocusedCell]=useState([0,0]);
   const[mapLog,setMapLog]=useState([]);
   const[maxEnergy,setMaxEnergy]=useState(3);
   const[relics,setRelics]=useState([]);
@@ -1152,6 +1153,59 @@ export default function ComicSpire(){
 
   // ── DEBUG ──
   useEffect(()=>{const h=e=>{if(e.key==='`')setDebugMode(p=>!p);};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[]);
+
+  // ── BATTLE KEYBINDS ──
+  useEffect(()=>{
+    if(screen!=='battle'||!battle)return;
+    const h=e=>{
+      if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+      const isP=battle.phase==='player'&&!animPhase;
+      // 1-9: select card
+      if(e.key>='1'&&e.key<='9'){
+        e.preventDefault();
+        const idx=Number(e.key)-1;
+        const card=battle.hand[idx];
+        if(!card)return;
+        const nextId=card.id===selectedCardId?null:card.id;
+        if(nextId){audio.unlock();audio.playSelect();if(card.type==='draw')audio.playDraw();}
+        setSelectedCardId(nextId);
+        setFocusedCell([0,0]);
+        return;
+      }
+      // Escape: deselect
+      if(e.key==='Escape'){setSelectedCardId(null);return;}
+      // Arrow keys: move grid cursor
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){
+        e.preventDefault();
+        setFocusedCell(([r,c])=>{
+          if(e.key==='ArrowUp')return[Math.max(0,r-1),c];
+          if(e.key==='ArrowDown')return[Math.min(1,r+1),c];
+          if(e.key==='ArrowLeft')return[r,Math.max(0,c-1)];
+          return[r,Math.min(1,c+1)];
+        });
+        return;
+      }
+      // Enter: place selected card on focused cell, or end turn
+      if(e.key==='Enter'){
+        e.preventDefault();
+        if(!isP)return;
+        const selCard=battle.hand.find(c=>c.id===selectedCardId);
+        if(selCard){
+          const validSet=getValid(battle.page,selCard);
+          const key=`${focusedCell[0]}-${focusedCell[1]}`;
+          if(validSet.has(key)){placeCard(selCard,focusedCell[0],focusedCell[1]);setSelectedCardId(null);}
+          else{// jump to first valid cell
+            const first=[...validSet][0];
+            if(first){const[r,c]=first.split('-').map(Number);setFocusedCell([r,c]);}}
+        }else{
+          endTurn();
+        }
+      }
+    };
+    window.addEventListener('keydown',h);
+    return()=>window.removeEventListener('keydown',h);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[screen,battle,selectedCardId,focusedCell,animPhase,audio,placeCard,endTurn]);
   const debugTravelTo=useCallback(nodeId=>{
     if(!hexMap)return;
     const[f,i]=nodeId.split('-').map(Number);
@@ -1286,6 +1340,11 @@ export default function ComicSpire(){
             <span style={{width:52,color:'#888'}}>Gold</span>
             <input type='range' min={0} max={500} value={gold} onChange={e=>setGold(Number(e.target.value))} style={{flex:1,accentColor:'#ffd700'}}/>
             <span style={{width:28,textAlign:'right',color:'#fff'}}>{gold}</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+            <span style={{width:52,color:'#888'}}>Evil</span>
+            <input type='range' min={0} max={100} value={evilness} onChange={e=>setEvilness(Number(e.target.value))} style={{flex:1,accentColor:'#ff3366'}}/>
+            <span style={{width:28,textAlign:'right',color:evilness>=60?'#ff3366':evilness<=40?'#33aaff':'#ffaa33'}}>{evilness}</span>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
             <span style={{width:52,color:'#888'}}>Energy</span>
@@ -1577,6 +1636,11 @@ export default function ComicSpire(){
           // In column-reverse layout: connector appears between this floor (below) and next floor (above)
           return [floorRow, connectorRow].filter(Boolean);
         })}
+      </div>
+      <div style={{textAlign:'center',marginTop:8}}>
+        <button onClick={()=>{if(window.confirm('Abandon this run and return to the main menu?'))setScreen('title');}} style={{fontFamily:FD,fontSize:11,padding:'4px 16px',background:'transparent',border:'1px solid #ff334422',borderRadius:4,color:'#ff334466',cursor:'pointer',letterSpacing:2}}>
+          ABANDON RUN
+        </button>
       </div>
       <details style={{maxWidth:500,margin:'10px auto 0'}}><summary style={{cursor:'pointer',fontFamily:FD,color:accent,fontSize:10}}>📖 Superpowers ({deck.length})</summary>
         <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:6,justifyContent:'center'}}>{deck.map(c=> <Card key={c.id} card={c}/>)}</div></details>
@@ -1870,9 +1934,11 @@ export default function ComicSpire(){
               const order=ri*COLS+ci+1;
               const shortName=pl?(pl.name.split("'s ")[1]||pl.name):'';
               const cardDesc=pl?({attack:`${pl.value} dmg`,magic:pl.keyword==='channel'||pl.keyword==='overchannel'?`${pl.value} pierce`:`${pl.value} magic`,defend:`+${pl.value} blk`,poison:pl.keyword==='corrode'?`${pl.value} corrode`:`${pl.value} poison`,heal:`heal ${pl.value}`,rage:pl.keyword==='blood'?`${pl.value} rage!`:`${pl.value} rage`,draw:`draw +${pl.value}`}[pl.type]||`${pl.value}`):'';
+              const isFocused=selCard&&focusedCell[0]===ri&&focusedCell[1]===ci;
               return <div key={key} onClick={()=>isV&&selCard?placeCard(selCard,ri,ci):null} style={{
-                backgroundColor:isV?'#fffbe6':'#faf8f2',
-                border:`2px solid ${isV?'#ddaa33':'#e0ddd6'}`,borderRadius:4,
+                backgroundColor:isFocused&&isV?'#fff5cc':isV?'#fffbe6':'#faf8f2',
+                border:`2px solid ${isFocused&&isV?'#ffaa00':isV?'#ddaa33':'#e0ddd6'}`,borderRadius:4,
+                boxShadow:isFocused&&isV?'0 0 0 2px #ffaa0066':undefined,
                 display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
                 cursor:isV?'pointer':'default',transition:'all 0.15s',position:'relative',
                 animation:isCharging?'chargeGlow 2s ease-in-out infinite':undefined,
