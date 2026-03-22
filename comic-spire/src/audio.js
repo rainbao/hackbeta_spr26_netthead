@@ -1,21 +1,34 @@
 const AUDIO_PATHS = {
-  bgm: "/assets/audio/bgm.mp3",
-  select: "/assets/audio/ui/card-select.mp3",
-  placeDefault: "/assets/audio/cards/place-default.mp3",
+  bgm: null,
+  select: "/assets/card_select.ogg",
+  draw: "/assets/card_draw.ogg",
+  placeDefault: "/assets/attack_punch.ogg",
   placeByKeyword: {
-    combo: "/assets/audio/cards/place-combo.mp3",
-    frenzy: "/assets/audio/cards/place-frenzy.mp3",
-    channel: "/assets/audio/cards/place-channel.mp3",
-    momentum: "/assets/audio/cards/place-momentum.mp3",
-    fortify: "/assets/audio/cards/place-fortify.mp3",
-    corrode: "/assets/audio/cards/place-corrode.mp3",
-    blood: "/assets/audio/cards/place-blood.mp3",
-    charge: "/assets/audio/cards/place-charge.mp3",
-    echo: "/assets/audio/cards/place-echo.mp3",
-    shieldbash: "/assets/audio/cards/place-shieldbash.mp3",
-    catalyze: "/assets/audio/cards/place-catalyze.mp3",
-    overchannel: "/assets/audio/cards/place-overchannel.mp3",
+    combo: "/assets/attack_combo.ogg",
+    frenzy: "/assets/attack_frenzy.ogg",
+    channel: "/assets/skill_channeling.ogg",
+    momentum: [
+      "/assets/skill_momentum1.ogg",
+      "/assets/skill_momentum2.ogg",
+      "/assets/skill_momentum3.ogg",
+      "/assets/skill_momentum4.ogg",
+    ],
+    fortify: "/assets/skill_fortify.ogg",
+    corrode: "/assets/attack_corrode.ogg",
+    blood: "/assets/attack_blood.ogg",
+    charge: "/assets/shield_break.ogg",
+    echo: "/assets/skill_echo.ogg",
+    shieldbash: "/assets/attack_shield_bash.ogg",
+    catalyze: "/assets/skill_catalyze.ogg",
+    overchannel: "/assets/skill_channeling.ogg",
   },
+};
+
+const pickOne = (value) => {
+  if (Array.isArray(value)) {
+    return value[Math.floor(Math.random() * value.length)] || null;
+  }
+  return value || null;
 };
 
 function makeClip(path, { loop = false, volume = 1 } = {}) {
@@ -71,6 +84,7 @@ export function createAudioSystem(config = AUDIO_PATHS) {
     },
     startBgm() {
       if (!enabled) return;
+      if (!config.bgm) return;
       if (!bgm) {
         bgm = makeClip(config.bgm, { loop: true, volume: 0.35 });
         bgm.onerror = () => {
@@ -89,9 +103,12 @@ export function createAudioSystem(config = AUDIO_PATHS) {
     playSelect() {
       playSfx(config.select, 0.55);
     },
+    playDraw() {
+      playSfx(config.draw, 0.45);
+    },
     playPlace(keyword) {
       const key = String(keyword || "").toLowerCase();
-      const path = config.placeByKeyword[key] || config.placeDefault;
+      const path = pickOne(config.placeByKeyword[key]) || config.placeDefault;
       playSfx(path, 0.6);
     },
   };

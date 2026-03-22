@@ -832,6 +832,7 @@ export default function ComicSpire(){
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
   const prevQueuedPagesRef=useRef(0);
+  const prevTurnAudioRef=useRef(null);
   const loadedSlateRef=useRef(new Set());
   const[slateReadyTick,setSlateReadyTick]=useState(0);
   const mapScrollRef=useRef(null);
@@ -889,6 +890,15 @@ export default function ComicSpire(){
   const applyRelic=useCallback(r=>{setRelics(p=>[...p,r]);if(r.fx==='hpUp')setPlayer(p=>({...p,maxHp:p.maxHp+8,hp:p.hp+8}));if(r.fx==='enUp')setMaxEnergy(p=>Math.min(5,p+1));},[]);
   useEffect(()=>()=>audio.stopBgm(),[audio]);
 
+  useEffect(()=>{
+    if(screen!=='battle'||battle.phase!=='player')return;
+    if(battle.hand.length===0)return;
+    if(prevTurnAudioRef.current===battle.turn)return;
+    prevTurnAudioRef.current=battle.turn;
+    audio.unlock();
+    audio.playDraw();
+  },[screen,battle.phase,battle.turn,battle.hand.length,audio]);
+
   useEffect(()=>{if(battle.victory&&screen==='battle'){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
     setCopiedAbilities(p=>[...p,{name:en.Name,sig:en.signature.name,arch:en.signature.archetype,icon:en.signature.icon,kw:en.signature.keyword}]);
@@ -928,13 +938,15 @@ export default function ComicSpire(){
   },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake]);
 
   const startGame=useCallback(()=>{
+    audio.unlock();
+    audio.startBgm();
     setPlayer({name:'Potential Man',hp:55,maxHp:55,critChance:10,def:2,Power:40,Strength:40,Magic:40,Intelligence:40,Speed:40,Defense:40,Poison:40,Rage:40,attrs:{Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0}});
     setDeck(makeStarterDeck());setGold(25);setEvilness(50);setMaxEnergy(3);
     setPotLv(1);setNgPlus(0);setCopiedAbilities([]);setRelics([]);setAttrPoints(0);setPendingAttrs({Strength:0,Magic:0,Defense:0,Speed:0,Vitality:0,Poison:0,Rage:0,Power:0});
     enemyCache.current={};
     const m=makeMap();m[0][0].visited=true;setHexMap(m);setCurFloor(0);setCurNodeId(m[0][0].id);
     setMapLog(['Find a route through the unknown city. Branches lock in for 3 floors.']);setScreen('openingCinematic');
-  },[]);
+  },[audio]);
 
   const startNewGamePlus=useCallback((currentNgPlus)=>{
     const nextNg=currentNgPlus+1;
@@ -956,6 +968,8 @@ export default function ComicSpire(){
   },[pendingBattle,hexMap,deck,maxEnergy,relics]);
 
   const placeCard=useCallback((card,r,c)=>{
+    audio.unlock();
+    audio.playPlace(card.keyword);
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
   },[audio,relics,player]);
