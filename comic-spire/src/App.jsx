@@ -839,6 +839,8 @@ export default function ComicSpire(){
   const[damageFlash,setDamageFlash]=useState(false);
   const prevHpRef=useRef(null);
   const prevAlignLabelRef=useRef(null);
+  const prevScreenRef=useRef('title');
+  const prevMusicAlignRef=useRef(alignment);
   const prevQueuedPagesRef=useRef(0);
   const prevTurnAudioRef=useRef(null);
   const loadedSlateRef=useRef(new Set());
@@ -903,6 +905,25 @@ export default function ComicSpire(){
   const hasR=useCallback(fx=>relics.some(r=>r.fx===fx),[relics]);
   const applyRelic=useCallback(r=>{setRelics(p=>[...p,r]);if(r.fx==='hpUp')setPlayer(p=>({...p,maxHp:p.maxHp+8,hp:p.hp+8}));if(r.fx==='enUp')setMaxEnergy(p=>Math.min(5,p+1));},[]);
   useEffect(()=>()=>audio.stopBgm(),[audio]);
+
+  useEffect(()=>{
+    const enteredScreen=prevScreenRef.current!==screen;
+    const alignChanged=prevMusicAlignRef.current!==alignment;
+
+    audio.unlock();
+    if(screen==='battle'){
+      if(enteredScreen)audio.playCombatBgm(alignment);
+    }else if(enteredScreen||alignChanged){
+      audio.playMenuBgm(alignment);
+    }
+
+    if(enteredScreen&&screen==='victory'){
+      audio.playJingle('victory',alignment);
+    }
+
+    prevScreenRef.current=screen;
+    prevMusicAlignRef.current=alignment;
+  },[screen,alignment,audio]);
 
   useEffect(()=>{
     if(screen!=='battle'||battle.phase!=='player')return;
@@ -1062,6 +1083,7 @@ export default function ComicSpire(){
       setShopItems(shuffle(shopPool).slice(0,4).map(h=>{const s=getSignature(h);s.price=Math.floor(18+s.tier*12+s.value);return s;}));
       const alignedRelics=ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id)&&(r.alignBias==='any'||r.alignBias===al||!r.alignBias));
       setShopRelics(shuffle(alignedRelics.length>=2?alignedRelics:ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id))).slice(0,2).map(r=>({...r,price:r.syn==='any'?30:45})));
+      audio.playJingle('shop',al);
       setScreen('shop');}
     else if(node.type==='event'){
       const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
@@ -1075,7 +1097,7 @@ export default function ComicSpire(){
       else pool=[...neutralEvents,...heroEvents.slice(0,2),...villainEvents.slice(0,2)];
       setCurEvent(pick(pool));setScreen('event');
     }
-    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});}
+    else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';audio.playJingle('rest',al);setRestPopup({hp:h});}
   },[audio,hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus,evilness]);
 
   const handleEvent=useCallback(opt=>{

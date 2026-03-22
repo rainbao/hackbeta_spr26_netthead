@@ -1,5 +1,47 @@
 const AUDIO_PATHS = {
   bgm: null,
+  menuBgm: {
+    hero: "/assets/menu_hero2.mp3",
+    villain: "/assets/menu_villain2.mp3",
+    neutral: ["/assets/menu_hero2.mp3", "/assets/menu_villain2.mp3"],
+  },
+  combatBgm: {
+    hero: [
+      "/assets/combat_hero1.mp3",
+      "/assets/combat_hero2.mp3",
+      "/assets/combat_hero3.mp3",
+    ],
+    villain: [
+      "/assets/combat_villain1.mp3",
+      "/assets/combat_villain2.mp3",
+      "/assets/combat_villian3.mp3",
+    ],
+    neutral: [
+      "/assets/combat_hero1.mp3",
+      "/assets/combat_hero2.mp3",
+      "/assets/combat_hero3.mp3",
+      "/assets/combat_villain1.mp3",
+      "/assets/combat_villain2.mp3",
+      "/assets/combat_villian3.mp3",
+    ],
+  },
+  jingles: {
+    shop: {
+      hero: "/assets/store_hero1.mp3",
+      villain: "/assets/store_villain1.mp3",
+      neutral: ["/assets/store_hero1.mp3", "/assets/store_villain1.mp3"],
+    },
+    rest: {
+      hero: "/assets/store_hero2.mp3",
+      villain: "/assets/store_villain2.mp3",
+      neutral: ["/assets/store_hero2.mp3", "/assets/store_villain2.mp3"],
+    },
+    victory: {
+      hero: ["/assets/victory_hero1.mp3", "/assets/victory_hero2.mp3"],
+      villain: ["/assets/victory_villain.mp3", "/assets/victory_villian2.mp3"],
+      neutral: ["/assets/victory_hero1.mp3", "/assets/victory_villain.mp3"],
+    },
+  },
   select: "/assets/card_select.ogg",
   draw: "/assets/card_draw.ogg",
   placeDefault: "/assets/attack_punch.ogg",
@@ -49,8 +91,35 @@ export function createAudioSystem(config = AUDIO_PATHS) {
   let enabled = false;
   let muted = false;
   let bgm = null;
+  let bgmPath = null;
   const sfxCache = new Map();
   const missing = new Set();
+
+  const pickForAlignment = (source, alignment = "neutral") => {
+    if (!source) return null;
+    const key = alignment === "hero" || alignment === "villain" ? alignment : "neutral";
+    const value = source[key] ?? source.neutral ?? source.hero ?? source.villain ?? null;
+    return pickOne(value);
+  };
+
+  const playBgmPath = (path, volume = 0.35) => {
+    if (!enabled || !path) return;
+    if (!bgm || bgmPath !== path) {
+      if (bgm) {
+        bgm.pause();
+      }
+      bgm = makeClip(path, { loop: true, volume });
+      bgm.onerror = () => {
+        bgm = null;
+        bgmPath = null;
+      };
+      bgmPath = path;
+    }
+    if (!bgm) return;
+    bgm.volume = volume;
+    bgm.muted = muted;
+    bgm.play().catch(() => {});
+  };
 
   const getSfx = (path) => {
     if (!path || missing.has(path)) return null;
@@ -97,22 +166,24 @@ export function createAudioSystem(config = AUDIO_PATHS) {
       }
     },
     startBgm() {
-      if (!enabled) return;
-      if (!config.bgm) return;
-      if (!bgm) {
-        bgm = makeClip(config.bgm, { loop: true, volume: 0.35 });
-        bgm.onerror = () => {
-          bgm = null;
-        };
-      }
-      if (!bgm) return;
-      bgm.muted = muted;
-      bgm.play().catch(() => {});
+      playBgmPath(config.bgm || pickForAlignment(config.menuBgm, "neutral"), 0.34);
+    },
+    playMenuBgm(alignment = "neutral") {
+      playBgmPath(pickForAlignment(config.menuBgm, alignment), 0.34);
+    },
+    playCombatBgm(alignment = "neutral") {
+      playBgmPath(pickForAlignment(config.combatBgm, alignment), 0.4);
+    },
+    playJingle(kind, alignment = "neutral") {
+      const path = pickForAlignment(config.jingles?.[kind], alignment);
+      if (!path) return;
+      playSfx(path, 0.85);
     },
     stopBgm() {
       if (!bgm) return;
       bgm.pause();
       bgm.currentTime = 0;
+      bgmPath = null;
     },
     playSelect() {
       playSfx(config.select, 0.85);
