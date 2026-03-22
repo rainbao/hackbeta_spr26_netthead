@@ -45,6 +45,11 @@ function getIntentVisibility(speed){
 
 function cardToIntent(card,en){
   const hits=card.hits||1;
+  const floor=Math.max(0,en.floor||0);
+  const isEarlyNormal=en.effectiveClass==='normal'&&floor<=2;
+  const earlyAttackCap=14+floor*2;
+  const earlyMagicCap=12+floor*2;
+  const capEarly=(v,isAttack=true)=>isEarlyNormal?Math.min(v,isAttack?earlyAttackCap:earlyMagicCap):v;
   const str=$(en.Strength||0),pow=$(en.Power||0),mag=$(en.Magic||0);
   const intel=$(en.Intelligence||0),def=$(en.Defense||0),poi=$(en.Poison||0);
   const atkMult=1+(str*0.003+pow*0.002);
@@ -53,15 +58,15 @@ function cardToIntent(card,en){
   const poiMult=1+poi*0.005;
   switch(card.type){
     case 'attack':case 'rage':{
-      if(card.keyword==='shieldbash')return{...card,intent:'shieldbash',intentVal:Math.max(0,en.block||0)};
-      if(card.keyword==='catalyze')return{...card,intent:'catalyze',intentVal:en.poisonStacks||0};
+      if(card.keyword==='shieldbash')return{...card,intent:'shieldbash',intentVal:capEarly(Math.max(0,en.block||0),true)};
+      if(card.keyword==='catalyze')return{...card,intent:'catalyze',intentVal:capEarly(en.poisonStacks||0,true)};
       const val=Math.max(1,Math.floor(card.value*atkMult))*hits;
-      return{...card,intent:'attack',intentVal:val};
+      return{...card,intent:'attack',intentVal:capEarly(val,true)};
     }
     case 'magic':{
       const val=Math.max(1,Math.floor(card.value*magMult));
-      if(card.keyword==='channel'||card.keyword==='overchannel')return{...card,intent:'channel',intentVal:val};
-      return{...card,intent:'magic',intentVal:val};
+      if(card.keyword==='channel'||card.keyword==='overchannel')return{...card,intent:'channel',intentVal:capEarly(val,false)};
+      return{...card,intent:'magic',intentVal:capEarly(val,false)};
     }
     case 'defend':return{...card,intent:'defend',intentVal:Math.max(1,Math.floor(card.value*defMult))};
     case 'poison':{
@@ -529,7 +534,7 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard,pAttrs={}){
       msg=`${card.icon} ${card.name} → ${tot}${crit?' CRIT!':''}${cb>0?' +'+cb+' combo':''}${defMit>0?` (−${defMit} def)`:''}`;
       // Only COMBO keyword cards increment the combo counter (not all attacks)
       if(card.keyword==='combo')st.comboCount++;
-      st.momentum++;break;}
+      break;}
     case 'magic':{
       if(card.keyword==='channel'){
         const pow=hasR('chanPow')?1.3:1;const gain=Math.floor((card.value+Math.floor(pMag/12)*2+chB)*cm*pow);
@@ -541,12 +546,12 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard,pAttrs={}){
         const defMit=Math.floor((en.def||0)*0.18);
         let d=Math.max(1,Math.floor((card.value+Math.floor(pMag/12)*2+chB)*cm)-defMit);const p2=Math.floor(d*0.4),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
         msg=`${card.icon} ${card.name} → ${d}${bl>0?` (${bl} blk, ${p2} pierced)`:''}`; }
-      st.momentum++;break;}
-    case 'defend':{const blkAmt=card.value+Math.floor(pDef/12)*2+chB;st.playerBlock+=blkAmt;msg=`🛡️ +${blkAmt} Block${card.keyword==='fortify'?' [FORTIFY]':''}`;st.momentum++;break;}
+      break;}
+    case 'defend':{const blkAmt=card.value+Math.floor(pDef/12)*2+chB;st.playerBlock+=blkAmt;msg=`🛡️ +${blkAmt} Block${card.keyword==='fortify'?' [FORTIFY]':''}`;break;}
     case 'poison':{const extra=(hasR('poisUp')?2:0)+Math.floor(pPoi/12)*2;const amt=Math.ceil(card.value||card.override||3)+extra+chB;
-      en.poisonStacks+=amt;if(card.keyword==='corrode'){en.corrodeStacks=(en.corrodeStacks||0)+amt;msg=`☠️ CORRODE +${amt} [permanent]`;}else msg=`☠️ +${amt} Poison`;st.momentum++;break;}
-    case 'heal':healFn(card.value+chB);msg=`💚 +${card.value+chB} HP`;st.momentum++;break;
-    case 'draw':st.extraDraw=(st.extraDraw||0)+(card.value+chB);msg=`📖 Draw +${card.value+chB} extra superpowers next turn`;st.momentum++;break;
+      en.poisonStacks+=amt;if(card.keyword==='corrode'){en.corrodeStacks=(en.corrodeStacks||0)+amt;msg=`☠️ CORRODE +${amt} [permanent]`;}else msg=`☠️ +${amt} Poison`;break;}
+    case 'heal':healFn(card.value+chB);msg=`💚 +${card.value+chB} HP`;break;
+    case 'draw':st.extraDraw=(st.extraDraw||0)+(card.value+chB);msg=`📖 Draw +${card.value+chB} extra superpowers next turn`;break;
   }
   if(hasR('cardBlk'))st.playerBlock+=2;
   return msg;
@@ -1132,14 +1137,15 @@ export default function ComicSpire(){
   const placeCard=useCallback((card,r,c)=>{
     audio.unlock();
     if(card.keyword==='momentum'){
-      const stage=Math.min(4,(battle.momentum||0)+1);
+      const momT=hasR('momDown')?3:4;
+      const stage=Math.min(momT,(battle.momentum||0)+1);
       audio.playMomentumStage(stage);
     }else{
       audio.playPlace(card.keyword, card.type);
     }
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
-  },[audio,relics,player,battle]);
+  },[audio,relics,player,battle,hasR]);
 
   const endTurn=useCallback(()=>{
     audio.unlock();audio.playSelect();
@@ -1865,10 +1871,10 @@ export default function ComicSpire(){
     const queuedCardCount=battle.queuedPages.reduce((sum,p)=>sum+(p.cardCount||p.cards?.length||0),0);
     const totalPlacedCount=queuedCardCount+battle.placedCards.length;
     const totalPageCount=battle.queuedPages.length+(battle.placedCards.length>0?1:0);
-    const momT=hasR('momDown')?2:3;
+    const momT=hasR('momDown')?3:4;
     const canPlay=c=>{if(!isP)return false;if(c.keyword==='blood'){const rageCostReduce=Math.floor(((player?.attrs?.Rage||0))/12);return(player?.hp||0)>Math.max(1,(hasR('bloodCheap')?3:c.bloodCost)-rageCostReduce);}
       if(c.keyword==='frenzy')return getValid(battle.page,c).size>0;
-      if(battle.momentum>=momT&&!battle.momentumUsed)return true;return battle.energy>=c.cost;};
+      return battle.energy>=c.cost;};
 
     // Find all cards currently on the page (placed + pendingCharges + activeCharges)
     const allPageCards=[...battle.placedCards,...battle.pendingCharges,...battle.activeCharges];
@@ -1973,7 +1979,7 @@ export default function ComicSpire(){
               <div style={{display:'flex',gap:2}}>{Array(battle.maxEnergy).fill(0).map((_,i)=> <div key={i} style={{width:13,height:13,borderRadius:'50%',background:i<battle.energy?'linear-gradient(135deg,#ffcc33,#ff8800)':'#222',border:`1px solid ${i<battle.energy?'#ffdd55':'#333'}`}}/>)}</div>
               {(player?.def||0)>0&&<span style={{color:'#aaaaff',fontSize:11}}>🔰{player.def}</span>}
               {battle.playerBlock>0&&<span style={{color:'#4499ff'}}>🛡️{battle.playerBlock}</span>}
-              {battle.momentum>0&&<span style={{color:'#33ddff'}}>⚡{battle.momentum}{battle.momentum>=momT&&!battle.momentumUsed?' FREE!':''}</span>}
+              {battle.momentum>0&&<span style={{color:'#33ddff'}}>⚡{battle.momentum}/{momT}</span>}
               {battle.channelStacks>0&&<span style={{color:'#bb55ff'}}>✨{battle.channelStacks}</span>}
               {battle.comboCount>0&&<span style={{color:'#ff4455'}}>⚔×{battle.comboCount}</span>}
               {(battle.playerPoison||0)>0&&<span style={{color:'#44dd66'}}>☠{battle.playerPoison}{(battle.playerCorrode||0)>0?'⊛':''}</span>}
