@@ -897,7 +897,7 @@ export default function ComicSpire(){
     if(finalPages.length>0){
       // Build slate preview: one entry per actual card placed (up to 4)
       const allCards=finalPages.flatMap(pg=>pg.cards||[]);
-      const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon}));
+      const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       const slateVariant=evilness>=60?'Brutal':'Bubble';
       setSlatePreview({cards:cardData,variant:slateVariant});
       setTimeout(()=>setSlatePreview(null),1500);
@@ -1202,15 +1202,76 @@ export default function ComicSpire(){
         <style>{CSS}</style><TooltipOverlay/><AlignNotif/>
         {slatePreview!==null&&(()=>{
           const{cards,variant}=slatePreview;
-          const slateImg=`/assets/${variant}_Comic_Slate_4.png`;
+          const previewCards=(cards||[]).slice(0,4);
+          const panelCount=clamp(previewCards.length,1,4);
+          const slateImg=`/assets/${variant}_Comic_Slate_${panelCount}.png`;
           const FLASH={attack:{c:'#ff2244',label:'ATTACK!'},magic:{c:'#aa33ff',label:'MAGIC!'},defend:{c:'#2266ff',label:'DEFEND!'},poison:{c:'#22cc44',label:'POISON!'},rage:{c:'#ff5500',label:'RAGE!'},heal:{c:'#22ccaa',label:'HEAL!'},draw:{c:'#11ccff',label:'DRAW!'}};
-          const panels=Array(4).fill(null).map((_,i)=>cards[i]||null);
+          const sortedCards=[...previewCards].sort((a,b)=>((a.row??0)*COLS+(a.col??0))-((b.row??0)*COLS+(b.col??0)));
+          const rowBuckets=[[],[]],colBuckets=[[],[]];
+          sortedCards.forEach(c=>{
+            const rr=clamp(c.row??0,0,1),cc=clamp(c.col??0,0,1);
+            rowBuckets[rr].push(c);colBuckets[cc].push(c);
+          });
+          const half='49%';
+          const slots=[];
+          if(sortedCards.length===1){
+            slots.push({card:sortedCards[0],style:{top:0,left:0,width:'100%',height:'100%'}});
+          }else if(sortedCards.length===2){
+            const verticalPair=[...sortedCards].sort((x,y)=>(x.row??0)-(y.row??0));
+            slots.push({card:verticalPair[0],style:{top:0,left:0,width:'100%',height:half}});
+            slots.push({card:verticalPair[1],style:{top:'51%',left:0,width:'100%',height:half}});
+          }else if(sortedCards.length===3){
+            const topCount=rowBuckets[0].length,bottomCount=rowBuckets[1].length;
+            const leftCount=colBuckets[0].length,rightCount=colBuckets[1].length;
+            if(topCount===2||bottomCount===2){
+              const twoRow=topCount===2?0:1;
+              const singleRow=twoRow===0?1:0;
+              const two=rowBuckets[twoRow].sort((x,y)=>(x.col??0)-(y.col??0));
+              const one=rowBuckets[singleRow][0];
+              if(twoRow===0){
+                slots.push({card:two[0],style:{top:0,left:0,width:half,height:half}});
+                slots.push({card:two[1],style:{top:0,left:'51%',width:half,height:half}});
+                slots.push({card:one,style:{top:'51%',left:0,width:'100%',height:half}});
+              }else{
+                slots.push({card:one,style:{top:0,left:0,width:'100%',height:half}});
+                slots.push({card:two[0],style:{top:'51%',left:0,width:half,height:half}});
+                slots.push({card:two[1],style:{top:'51%',left:'51%',width:half,height:half}});
+              }
+            }else if(leftCount===2||rightCount===2){
+              const twoCol=leftCount===2?0:1;
+              const singleCol=twoCol===0?1:0;
+              const two=colBuckets[twoCol].sort((x,y)=>(x.row??0)-(y.row??0));
+              const one=colBuckets[singleCol][0];
+              if(twoCol===0){
+                slots.push({card:two[0],style:{top:0,left:0,width:half,height:half}});
+                slots.push({card:two[1],style:{top:'51%',left:0,width:half,height:half}});
+                slots.push({card:one,style:{top:0,left:'51%',width:half,height:'100%'}});
+              }else{
+                slots.push({card:one,style:{top:0,left:0,width:half,height:'100%'}});
+                slots.push({card:two[0],style:{top:0,left:'51%',width:half,height:half}});
+                slots.push({card:two[1],style:{top:'51%',left:'51%',width:half,height:half}});
+              }
+            }else{
+              slots.push({card:sortedCards[0],style:{top:0,left:0,width:half,height:half}});
+              slots.push({card:sortedCards[1],style:{top:0,left:'51%',width:half,height:half}});
+              slots.push({card:sortedCards[2],style:{top:'51%',left:0,width:'100%',height:half}});
+            }
+          }else{
+            const cellMap=[
+              {top:0,left:0,width:half,height:half},
+              {top:0,left:'51%',width:half,height:half},
+              {top:'51%',left:0,width:half,height:half},
+              {top:'51%',left:'51%',width:half,height:half},
+            ];
+            sortedCards.forEach((card,idx)=>slots.push({card,style:cellMap[idx]}));
+          }
           return <div style={{position:'fixed',inset:0,background:'#000d',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
             <div style={{position:'relative',width:290,height:390}}>
-              <div style={{position:'absolute',top:'3%',left:'4%',width:'92%',height:'93%',display:'grid',gridTemplateColumns:'1fr 1fr',gridTemplateRows:'1fr 1fr',gap:'2%'}}>
-                {panels.map((card,i)=>{
+              <div style={{position:'absolute',inset:0}}>
+                {slots.map((slot,i)=>{
+                  const card=slot.card;
                   const cfg=card?(FLASH[card.type]||FLASH.attack):{c:'#111',label:''};
-                  return <div key={i} style={{background:cfg.c,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,overflow:'hidden'}}>
+                  return <div key={i} style={{position:'absolute',...slot.style,background:cfg.c,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,overflow:'hidden'}}>
                     {card&&<><span style={{fontSize:36,lineHeight:1,filter:'drop-shadow(0 2px 8px #0009)'}}>{card.icon||'⚡'}</span>
                     <span style={{fontFamily:FD,fontSize:11,color:'#fff',letterSpacing:2,textShadow:'0 0 8px #000,0 2px 3px #000',fontWeight:700}}>{cfg.label}</span></>}
                   </div>;
