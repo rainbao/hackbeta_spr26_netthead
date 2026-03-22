@@ -84,7 +84,7 @@ function makeEnemyPlan(en){
 const KW_INFO={
   combo:{name:'COMBO',color:'#ff4455',desc:'Each COMBO card played this turn adds +2 damage to the next COMBO card.'},
   channel:{name:'CHANNEL',color:'#bb55ff',desc:'Stacks magic damage. Releases at end of turn — pierces ALL block and applies Weaken.'},
-  momentum:{name:'MOMENTUM',color:'#33ddff',desc:'Each card played adds +1. At 3: ONE free card.'},
+  momentum:{name:'MOMENTUM',color:'#33ddff',desc:'Each MOMENTUM card advances a 4-stage meter. At stage 4: gain +1 Energy and reset.'},
   fortify:{name:'FORTIFY',color:'#4499ff',desc:'50% of your Block carries over to next turn.'},
   corrode:{name:'CORRODE',color:'#44dd66',desc:'Poison that NEVER decays. Stacks permanently.'},
   blood:{name:'BLOOD',color:'#ff7722',desc:'Costs HP instead of energy. High-risk, high-reward strikes.'},
@@ -361,7 +361,7 @@ const ALL_RELICS=[
   {id:'r4',name:'Mana Siphon',desc:'Channel heals 25%',icon:'💎',syn:'CHANNEL',fx:'chanHeal',alignBias:'hero'},
   {id:'r5',name:'Titanium Shell',desc:'Fortify 65%',icon:'🐢',syn:'FORTIFY',fx:'fortUp',alignBias:'hero'},
   {id:'r6',name:'Regenerator',desc:'+2 HP/turn',icon:'💗',syn:'FORTIFY',fx:'regen',alignBias:'hero'},
-  {id:'r7',name:'Lightning Boots',desc:'Free card at 2 cards played (instead of 3)',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
+  {id:'r7',name:'Lightning Boots',desc:'MOMENTUM surges at 3 stages (instead of 4)',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
   {id:'r8',name:'Afterimage',desc:'+2 Block/card',icon:'👤',syn:'MOMENTUM',fx:'cardBlk',alignBias:'any'},
   {id:'r9',name:'Plague Mask',desc:'All poison +2',icon:'🎭',syn:'CORRODE',fx:'poisUp',alignBias:'villain'},
   {id:'r10',name:'Blood Ruby',desc:'Blood costs 3',icon:'💎',syn:'BLOOD',fx:'bloodCheap',alignBias:'villain'},
@@ -566,9 +566,7 @@ function bReduce(state,action){
       const pRageAttr=(action.playerAttrs?.Rage||40)-40;
       if(card.keyword==='blood'){const rageCostReduce=Math.floor(pRageAttr/12);const cost=Math.max(1,(hasR('bloodCheap')?3:card.bloodCost)-rageCostReduce);if(action.playerHp<=cost)return s;action.payBlood(cost);}
       else if(card.keyword==='frenzy'){/* frenzy costs 0 energy */}
-      else{let ec=card.cost;const momT=hasR('momDown')?2:3;
-        if(s.momentum>=momT&&!s.momentumUsed){ec=0;s.momentumUsed=true;s.log=[...s.log,'⚡ MOMENTUM! Free!'];}
-        if(s.energy<ec)return s;s.energy-=ec;}
+      else{if(s.energy<card.cost)return s;s.energy-=card.cost;}
       // Place on grid using shape
       if(!canPlace(s.page,row,col,card))return s;
       s.page=doPlace(s.page,row,col,card,card.id);
@@ -590,8 +588,18 @@ function bReduce(state,action){
         s.log=[...s.log,`📚 Page ${s.queuedPages.length} saved (${pageCardCount} card${pageCardCount===1?'':'s'})`];
       }
 
-      // Only MOMENTUM-keyword cards build momentum
-      if(card.keyword==='momentum')s.momentum++;
+      // MOMENTUM cards advance stage meter; at threshold: +1 Energy and reset
+      if(card.keyword==='momentum'){
+        const momT=hasR('momDown')?3:4;
+        s.momentum++;
+        if(s.momentum>=momT){
+          s.momentum=0;
+          s.energy=Math.min(s.maxEnergy+1,s.energy+1);
+          s.log=[...s.log,`⚡ MOMENTUM SURGE! +1 Energy (${momT}/${momT})`];
+        }else{
+          s.log=[...s.log,`⚡ MOMENTUM ${s.momentum}/${momT}`];
+        }
+      }
       return s;}
 
     case 'END_TURN':{
@@ -879,7 +887,13 @@ export default function ComicSpire(){
   },[alignLabel]);
   const addFloat=useCallback((t,c,side='enemy')=>{const id=uid();setFloaters(p=>[...p,{id,text:t,color:c,x:side==='enemy'?60+Math.random()*24:6+Math.random()*24,y:18+Math.random()*22}]);setTimeout(()=>setFloaters(p=>p.filter(f=>f.id!==id)),1400);},[]);
   const doShake=useCallback(()=>{setShake(true);setTimeout(()=>setShake(false),350);},[]);
-  const healPlayer=useCallback(amt=>setPlayer(p=>p?{...p,hp:Math.min(p.maxHp,p.hp+amt)}:p),[]);
+  const healPlayer=useCallback((amt)=>{
+    const healAmt=Math.max(0,amt||0);
+    if(healAmt<=0)return;
+    audio.unlock();
+    audio.playPlace('echo');
+    setPlayer(p=>p?{...p,hp:Math.min(p.maxHp,p.hp+healAmt)}:p);
+  },[audio]);
   useEffect(()=>{
     const hp=player?.hp;
     if(hp==null){prevHpRef.current=hp;return;}
@@ -898,6 +912,19 @@ export default function ComicSpire(){
     audio.unlock();
     audio.playDraw();
   },[screen,battle.phase,battle.turn,battle.hand.length,audio]);
+
+  useEffect(()=>{
+    const onButtonSelect=(ev)=>{
+      if(screen==='battle')return;
+      const target=ev.target;
+      if(!(target instanceof Element))return;
+      if(!target.closest('button'))return;
+      audio.unlock();
+      audio.playSelect();
+    };
+    document.addEventListener('pointerdown',onButtonSelect,true);
+    return ()=>document.removeEventListener('pointerdown',onButtonSelect,true);
+  },[screen,audio]);
 
   useEffect(()=>{if(battle.victory&&screen==='battle'){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
@@ -924,6 +951,8 @@ export default function ComicSpire(){
       const cardData=(page?.cards||[]).slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       if(cardData.length>0){
         const slateVariant=pick(['Bubble','Brutal','Action']);
+        audio.unlock();
+        audio.playPlace('charge');
         setSlatePreview({cards:cardData,variant:slateVariant});
         setTimeout(()=>setSlatePreview(null),900);
       }
@@ -935,7 +964,7 @@ export default function ComicSpire(){
     }
 
     prevQueuedPagesRef.current=battle.queuedPages.length;
-  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake]);
+  },[battle.queuedPages,battle.phase,screen,relics,player?.hp,player?.maxHp,doShake,audio]);
 
   const startGame=useCallback(()=>{
     audio.unlock();
@@ -969,10 +998,15 @@ export default function ComicSpire(){
 
   const placeCard=useCallback((card,r,c)=>{
     audio.unlock();
-    audio.playPlace(card.keyword, card.type);
+    if(card.keyword==='momentum'){
+      const stage=Math.min(4,(battle.momentum||0)+1);
+      audio.playMomentumStage(stage);
+    }else{
+      audio.playPlace(card.keyword, card.type);
+    }
     dispatch({type:'PLACE_CARD',card,row:r,col:c,relics,playerHp:player?.hp||1,playerAttrs:player||{},payBlood:cost=>setPlayer(p=>p?{...p,hp:Math.max(1,p.hp-cost)}:p)});
     setSelectedCardId(null);
-  },[audio,relics,player]);
+  },[audio,relics,player,battle]);
 
   const endTurn=useCallback(()=>{
     audio.unlock();audio.playSelect();
@@ -998,20 +1032,23 @@ export default function ComicSpire(){
       const allCards=finalPages.flatMap(pg=>pg.cards||[]);
       const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon,row:c.row,col:c.col}));
       const slateVariant=pick(['Bubble','Brutal','Action']);
+      audio.unlock();
+      audio.playPlace('charge');
       setSlatePreview({cards:cardData,variant:slateVariant});
       setTimeout(()=>setSlatePreview(null),1500);
     }
     setTimeout(()=>{
       dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,playerDef:player?.def||2,
-        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer,damageFn:()=>{audio.unlock();audio.playPlace('momentum');}});
+        evilness,playerAttrs:player||{},getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer,damageFn:()=>{audio.unlock();audio.playPlace('', 'attack');}});
       doShake();setAnimPhase(null);
     },400);
-  },[battle,player,relics,doShake,healPlayer,evilness]);
+  },[battle,player,relics,doShake,healPlayer,evilness,audio]);
 
   const selectNode=useCallback(nodeId=>{
     if(!hexMap)return;const[f,i]=nodeId.split('-').map(Number);
     const[cf,ci]=(curNodeId||'0-0').split('-').map(Number);const cur=hexMap[cf]?.[ci];
     if(!cur?.conns?.includes(nodeId)&&f!==0)return;const node=hexMap[f][i];
+    audio.unlock();audio.playSelect();
     if(['battle','elite','boss'].includes(node.type)){
       if(!enemyCache.current[nodeId])enemyCache.current[nodeId]=pickEnemy(heroes,f,node.type==='boss',node.type==='elite',evilness,ngPlus);
       setPendingBattle({nodeId,en:enemyCache.current[nodeId]});return;}
@@ -1039,14 +1076,13 @@ export default function ComicSpire(){
       setCurEvent(pick(pool));setScreen('event');
     }
     else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});}
-  },[hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus]);
+  },[audio,hexMap,curNodeId,heroes,player,relics,healPlayer,ngPlus,evilness]);
 
   const handleEvent=useCallback(opt=>{
-    audio.unlock();audio.playSelect();
     const cp=deck.filter(c=>c.copiedFrom);
     if(opt.fx==='upgrade'){if(cp.length>0){const t=[...cp].sort((a,b)=>a.value-b.value)[0];setDeck(p=>p.map(x=>x.id===t.id?{...x,value:Math.floor(x.value*1.3),name:x.name+'+'}:x));}}
     else if(opt.fx==='remove'){const b=deck.filter(c=>!c.copiedFrom&&c.tier===0);if(b.length>0)setDeck(p=>p.filter(x=>x.id!==b[0].id));}
-    else if(opt.fx==='heal'){audio.playPlace('echo');healPlayer(opt.v);}
+    else if(opt.fx==='heal')healPlayer(opt.v);
     else if(opt.fx==='gold')setGold(p=>p+opt.v);
     else if(opt.fx==='maxEn'){setMaxEnergy(p=>Math.min(5,p+1));setPlayer(p=>p?{...p,maxHp:Math.max(20,p.maxHp-15),hp:Math.max(1,p.hp-15)}:p);}
     else if(opt.fx==='dupe'){if(cp.length>0){const b=[...cp].sort((a,b)=>b.value-a.value)[0];setDeck(p=>[...p,{...b,id:uid()}]);}}
@@ -1832,7 +1868,7 @@ export default function ComicSpire(){
     <div style={{maxWidth:360,background:bg2,border:`1.5px solid ${accent}44`,borderRadius:10,padding:18,textAlign:'center',animation:'fadeUp 0.3s'}}>
       <div style={{fontSize:24,marginBottom:3}}>❓</div>
       <h2 style={{fontFamily:FD,fontSize:18,color:accent,marginBottom:8}}>{curEvent.title}</h2>
-      {curEvent.opts.map((o,i)=> <button key={i} onClick={()=>{audio.unlock();audio.playSelect();handleEvent(o);}} style={{display:'block',width:'100%',fontFamily:FB,fontWeight:700,fontSize:10,padding:'7px 10px',marginBottom:4,background:'#00000044',border:`1px solid ${accent}33`,borderRadius:6,color:'#ddd',cursor:'pointer',textAlign:'left',transition:'all 0.2s'}}
+      {curEvent.opts.map((o,i)=> <button key={i} onClick={()=>handleEvent(o)} style={{display:'block',width:'100%',fontFamily:FB,fontWeight:700,fontSize:10,padding:'7px 10px',marginBottom:4,background:'#00000044',border:`1px solid ${accent}33`,borderRadius:6,color:'#ddd',cursor:'pointer',textAlign:'left',transition:'all 0.2s'}}
         onMouseEnter={e=>{e.currentTarget.style.borderColor=accent;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=`${accent}33`;}}>{evBtnText(o)}</button>)}
     </div>
   </div>);}

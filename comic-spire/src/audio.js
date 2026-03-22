@@ -26,6 +26,7 @@ const AUDIO_PATHS = {
     defend: "/assets/skill_fortify.ogg",
     magic: "/assets/skill_channeling.ogg",
     draw: "/assets/card_draw.ogg",
+    heal: "/assets/skill_echo.ogg",
   },
 };
 
@@ -63,12 +64,16 @@ export function createAudioSystem(config = AUDIO_PATHS) {
     return clip;
   };
 
-  const playSfx = (path, volume = 1) => {
+  const playSfx = (path, volume = 1, startAt = 0) => {
     if (!enabled || muted) return;
     const clip = getSfx(path);
     if (!clip) return;
     try {
-      clip.currentTime = 0;
+      if (startAt > 0 && clip.readyState >= 1) {
+        clip.currentTime = startAt;
+      } else {
+        clip.currentTime = 0;
+      }
       clip.volume = volume;
       clip.play().catch(() => {});
     } catch {
@@ -80,6 +85,10 @@ export function createAudioSystem(config = AUDIO_PATHS) {
     paths: config,
     unlock() {
       enabled = true;
+      // Warm up frequently used clips to reduce first-play latency.
+      getSfx(config.select);
+      getSfx(config.draw);
+      getSfx(config.placeByKeyword.channel);
     },
     setMuted(nextMuted) {
       muted = !!nextMuted;
@@ -106,20 +115,32 @@ export function createAudioSystem(config = AUDIO_PATHS) {
       bgm.currentTime = 0;
     },
     playSelect() {
-      playSfx(config.select, 0.55);
+      playSfx(config.select, 0.85);
     },
     playDraw() {
-      playSfx(config.draw, 0.45);
+      playSfx(config.draw, 0.85);
+    },
+    playMomentumStage(stage) {
+      const clips = config.placeByKeyword.momentum;
+      if (Array.isArray(clips) && clips.length > 0) {
+        const idx = Math.max(0, Math.min(3, (Number(stage) || 1) - 1));
+        playSfx(clips[idx], 0.85);
+        return;
+      }
+      playSfx(pickOne(clips), 0.85);
     },
     playPlace(keyword, cardType) {
       const key = String(keyword || "").toLowerCase();
+      const typeKey = String(cardType || "").toLowerCase();
       let path = pickOne(config.placeByKeyword[key]);
       if (!path) {
-        const typeKey = String(cardType || "").toLowerCase();
         path = config.placeByType[typeKey];
       }
       path = path || config.placeDefault;
-      playSfx(path, 0.6);
+      const volume = key === "fortify" || (!config.placeByKeyword[key] && typeKey === "defend") ? 1.0 : 0.6;
+      const isChannelPath = path === config.placeByKeyword.channel;
+      const startAt = isChannelPath ? 0.06 : 0;
+      playSfx(path, volume, startAt);
     },
   };
 }
