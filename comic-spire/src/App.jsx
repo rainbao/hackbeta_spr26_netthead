@@ -1089,7 +1089,7 @@ export default function ComicSpire(){
       {price!=null&&<div style={{fontFamily:FD,fontSize:11,color:gold>=price?'#ffd700':'#ff4455',marginTop:3}}>💰{price}</div>}
     </div>;};
 
-  const CSS=`@import url('${FURL}');@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes shakeAnim{0%,100%{transform:translate(0)}15%{transform:translate(-5px,2px)}35%{transform:translate(4px,-3px)}55%{transform:translate(-3px,4px)}75%{transform:translate(5px,-2px)}}@keyframes floatDmg{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-80px) scale(1.5)}}@keyframes enterCard{0%{opacity:0;transform:translateY(70px) scale(0.75) rotate(-6deg)}60%{opacity:1;transform:translateY(-6px) scale(1.04) rotate(1deg)}100%{opacity:1;transform:translateY(0) scale(1) rotate(0deg)}}@keyframes chargeGlow{0%,100%{box-shadow:inset 0 0 8px #ffaa3322}50%{box-shadow:inset 0 0 16px #ffaa3366}}@keyframes dmgFlash{0%{opacity:0.55}100%{opacity:0}}@keyframes spin{to{transform:rotate(360deg)}}`;
+  const CSS=`@import url('${FURL}');@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes shakeAnim{0%,100%{transform:translate(0)}15%{transform:translate(-5px,2px)}35%{transform:translate(4px,-3px)}55%{transform:translate(-3px,4px)}75%{transform:translate(5px,-2px)}}@keyframes floatDmg{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-80px) scale(1.5)}}@keyframes enterCard{0%{opacity:0;transform:translateY(70px) scale(0.75) rotate(-6deg)}60%{opacity:1;transform:translateY(-6px) scale(1.04) rotate(1deg)}100%{opacity:1;transform:translateY(0) scale(1) rotate(0deg)}}@keyframes chargeGlow{0%,100%{box-shadow:inset 0 0 8px #ffaa3322}50%{box-shadow:inset 0 0 16px #ffaa3366}}@keyframes dmgFlash{0%{opacity:0.55}100%{opacity:0}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%,100%{opacity:0.7}50%{opacity:1}}@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(100vh)}}`;
 
   // ═══ ALIGNMENT TIER NOTIFICATION ═══
   const AlignNotif=()=>{if(!alignNotif)return null;
@@ -1108,19 +1108,78 @@ export default function ComicSpire(){
 
   // ═══ TITLE ═══
   if(screen==='title')return (
-    <div style={{minHeight:'100vh',background:'radial-gradient(ellipse at 50% 40%,#1a0a2e,#000)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:20,overflow:'hidden',position:'relative'}}>
+    <div style={{minHeight:'100vh',background:'#05010f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',overflow:'hidden',position:'relative'}}>
       <style>{CSS}</style>
-      <div style={{position:'absolute',width:500,height:500,background:'conic-gradient(from 0deg,#ffaa3308 0deg,transparent 15deg,#ffaa3308 30deg,transparent 45deg)',borderRadius:'50%',animation:'spin 25s linear infinite'}}/>
-      <div style={{position:'relative',zIndex:1,textAlign:'center'}}>
-        <div style={{fontSize:12,letterSpacing:8,color:'#ffaa33',fontFamily:FB,animation:'fadeUp 0.5s ease both'}}>HACKBETA</div>
-        <h1 style={{fontSize:'clamp(42px,8vw,72px)',textShadow:'4px 4px 0 #ff6600,8px 8px 0 #000',margin:'8px 0',animation:'pulse 3s ease-in-out infinite',lineHeight:1}}>COMIC SPIRE</h1>
-        <div style={{fontSize:18,color:'#ffaa33',textShadow:'2px 2px 0 #000',margin:'6px 0',animation:'fadeUp 0.5s 0.15s ease both',opacity:0}}>POTENTIAL MAN</div>
-        <div style={{fontFamily:FB,fontSize:13,color:'#666',maxWidth:420,margin:'10px auto 16px',lineHeight:1.7,animation:'fadeUp 0.5s 0.3s ease both',opacity:0}}>
-          Place cards on a comic page panel. They resolve in reading order on END TURN.<br/>
-          Bigger cards = bigger panels = harder to fit. Charge cards fire next turn.<br/>
-          <span style={{color:'#ff4455'}}>Combo</span> · <span style={{color:'#bb55ff'}}>Channel</span> · <span style={{color:'#33ddff'}}>Momentum</span> · <span style={{color:'#4499ff'}}>Fortify</span> · <span style={{color:'#44dd66'}}>Corrode</span> · <span style={{color:'#ff7722'}}>Blood</span> · <span style={{color:'#dd88ff'}}>Echo</span> · <span style={{color:'#55aaff'}}>Shield Bash</span> · <span style={{color:'#88ff44'}}>Catalyze</span> · <span style={{color:'#aa44dd'}}>Overchannel</span> · <span style={{color:'#ff55aa'}}>Frenzy</span>
+      {/* deep radial atmosphere */}
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse 90% 70% at 50% 45%,#200840 0%,#0a0118 55%,#000 100%)',pointerEvents:'none'}}/>
+      {/* dot halftone overlay */}
+      <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle,#ffffff07 1px,transparent 1px)',backgroundSize:'28px 28px',pointerEvents:'none'}}/>
+      {/* slow scanline sweep */}
+      <div style={{position:'absolute',left:0,right:0,height:80,background:'linear-gradient(180deg,transparent,#ffffff04,transparent)',animation:'scanline 8s linear infinite',pointerEvents:'none'}}/>
+      {/* outer conic ring */}
+      <div style={{position:'absolute',width:760,height:760,background:'conic-gradient(from 0deg,transparent 0deg,#ff660009 12deg,transparent 24deg,#aa33ff09 36deg,transparent 48deg)',borderRadius:'50%',animation:'spin 35s linear infinite',pointerEvents:'none'}}/>
+      {/* inner glow ring */}
+      <div style={{position:'absolute',width:420,height:420,border:'1px solid #ff880022',borderRadius:'50%',boxShadow:'0 0 80px #ff440018,inset 0 0 80px #aa33ff0c',animation:'pulse 5s ease-in-out infinite',pointerEvents:'none'}}/>
+
+      {/* ── main content ── */}
+      <div style={{position:'relative',zIndex:1,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
+
+        {/* build tag */}
+        <div style={{fontFamily:FB,fontSize:10,letterSpacing:8,color:'#ffaa3388',animation:'fadeUp 0.4s ease both',marginBottom:20,textTransform:'uppercase'}}>Hackathon Build · 2026</div>
+
+        {/* POTENTIAL */}
+        <div style={{fontSize:'clamp(58px,11vw,112px)',lineHeight:0.88,fontFamily:FD,letterSpacing:6,
+          background:'linear-gradient(170deg,#fff 0%,#ffe580 35%,#ff9900 70%,#ff5500 100%)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 28px #ff880060) drop-shadow(3px 5px 0 #000)',
+          animation:'fadeUp 0.5s 0.1s ease both'}}>
+          POTENTIAL
         </div>
-        <button onClick={startGame} style={{fontFamily:FD,fontSize:24,padding:'12px 44px',background:'linear-gradient(135deg,#ffaa33,#ff6600)',border:'4px solid #fff',borderRadius:12,color:'#fff',cursor:'pointer',textShadow:'2px 2px 0 #000',boxShadow:'0 0 30px #ffaa3344',animation:'float 3s ease-in-out infinite'}}>BEGIN</button>
+
+        {/* MAN */}
+        <div style={{fontSize:'clamp(58px,11vw,112px)',lineHeight:0.88,fontFamily:FD,letterSpacing:22,
+          background:'linear-gradient(170deg,#fff 0%,#ffe580 35%,#ff9900 70%,#ff5500 100%)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 28px #ff880060) drop-shadow(3px 5px 0 #000)',
+          animation:'fadeUp 0.5s 0.18s ease both,pulse 5s 0.7s ease-in-out infinite'}}>
+          MAN
+        </div>
+
+        {/* subtitle rule */}
+        <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 14px',animation:'fadeUp 0.5s 0.28s ease both',opacity:0}}>
+          <div style={{width:60,height:1,background:'linear-gradient(90deg,transparent,#ffaa3388)'}}/>
+          <span style={{fontFamily:FB,fontSize:11,letterSpacing:5,color:'#ffaa3399',textTransform:'uppercase'}}>A Comic Spire Story</span>
+          <div style={{width:60,height:1,background:'linear-gradient(270deg,transparent,#ffaa3388)'}}/>
+        </div>
+
+        {/* tagline */}
+        <div style={{fontFamily:FB,fontSize:13,color:'#7766aa',letterSpacing:2,marginBottom:28,animation:'fadeUp 0.5s 0.34s ease both',opacity:0}}>
+          Place · Resolve · Evolve
+        </div>
+
+        {/* keyword pills */}
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,justifyContent:'center',maxWidth:460,marginBottom:36,animation:'fadeUp 0.5s 0.42s ease both',opacity:0}}>
+          {[['Combo','#ff4455'],['Channel','#bb55ff'],['Momentum','#33ddff'],['Blood','#ff7722'],['Corrode','#44dd66'],['Fortify','#4499ff'],['Echo','#dd88ff'],['Frenzy','#ff55aa']].map(([kw,col])=>
+            <span key={kw} style={{fontFamily:FD,fontSize:10,padding:'3px 11px',background:`${col}14`,border:`1px solid ${col}44`,borderRadius:20,color:col,letterSpacing:1}}>{kw.toUpperCase()}</span>
+          )}
+        </div>
+
+        {/* CTA button */}
+        <button onClick={startGame} style={{fontFamily:FD,fontSize:22,padding:'15px 72px',
+          background:'linear-gradient(135deg,#ff9900,#ff4400)',
+          border:'none',borderRadius:3,color:'#fff',cursor:'pointer',
+          letterSpacing:6,textTransform:'uppercase',
+          textShadow:'1px 2px 0 #00000088',
+          boxShadow:'0 0 48px #ff660044,0 5px 0 #882200,0 10px 30px #00000066',
+          animation:'fadeUp 0.5s 0.5s ease both,float 3s 1s ease-in-out infinite',
+          opacity:0}}>
+          NEW GAME
+        </button>
+
+        {/* version footer */}
+        <div style={{marginTop:28,fontFamily:FB,fontSize:10,color:'#333',letterSpacing:3,animation:'fadeUp 0.5s 0.6s ease both',opacity:0}}>
+          v0.9-alpha
+        </div>
       </div>
     </div>);
 
