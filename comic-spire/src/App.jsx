@@ -21,7 +21,9 @@ const ROWS=2,COLS=2;
 const TOTAL_PANELS=ROWS*COLS;
 
 function panelSpanForCard(card){
-  const energyCost=(card.keyword==='blood'||card.keyword==='frenzy')?1:Math.max(1,card.cost||1);
+  // Use the card's shape definition as the source of truth for panel span
+  if(card.shape&&SHAPES[card.shape])return SHAPES[card.shape].length;
+  const energyCost=card.keyword==='blood'?1:Math.max(1,card.cost||1);
   if(energyCost>=4)return 4;
   if(energyCost>=2)return 2;
   return 1;
@@ -79,9 +81,9 @@ function makeEnemyPlan(en){
 
 // ═══ KEYWORD DEFINITIONS (shown on hover) ═══
 const KW_INFO={
-  combo:{name:'COMBO',color:'#ff4455',desc:'Each attack this turn adds +3 damage to the next attack.'},
+  combo:{name:'COMBO',color:'#ff4455',desc:'Each COMBO card played this turn adds +2 damage to the next COMBO card.'},
   channel:{name:'CHANNEL',color:'#bb55ff',desc:'Stacks magic damage. Releases at end of turn — pierces ALL block and applies Weaken.'},
-  momentum:{name:'MOMENTUM',color:'#33ddff',desc:'Each card played adds +1. At 4: ONE free card.'},
+  momentum:{name:'MOMENTUM',color:'#33ddff',desc:'Each card played adds +1. At 3: ONE free card.'},
   fortify:{name:'FORTIFY',color:'#4499ff',desc:'50% of your Block carries over to next turn.'},
   corrode:{name:'CORRODE',color:'#44dd66',desc:'Poison that NEVER decays. Stacks permanently.'},
   blood:{name:'BLOOD',color:'#ff7722',desc:'Costs HP instead of energy. High-risk, high-reward strikes.'},
@@ -184,7 +186,7 @@ function makeEnemy(hero,floor,isBoss,isElite){
   return{...hero,gameHp:hp,gameMaxHp:hp,block:0,poisonStacks:0,corrodeStacks:0,weakened:0,
     atk:Math.floor(3+(stats.Strength*0.07+stats.Power*0.05)*m+floor*0.4),
     mag:Math.floor(2+(stats.Magic*0.06+stats.Intelligence*0.04)*m+floor*0.3),
-    def:Math.floor(stats.Defense*0.12*m+2),speed:stats.Speed,color:clr(hero.Favorite_Color),
+    def:Math.floor(stats.Defense*0.12*m+2),speed:stats.Speed,color:clr(hero.Favorite_Color),floor,
     isBoss:effectiveClass==='boss',isElite:effectiveClass==='elite',effectiveClass,threat,
     intent:null,intentVal:0,signature:getSignature(hero),deck:makeEnemyDeck(hero,floor)};
 }
@@ -216,14 +218,14 @@ function makeEnemyDeck(hero,floor){
     mk('Charged Haymaker','⏳ Deal 20 next turn','attack','⚡',20,'combo',1,1,true)];
 
   if(best==='Magic')return[sig,
-    mk('Mind Blast','CHANNEL 8: bursts EOT, pierces ALL block','magic','✨',8,'channel'),
-    mk('Psychic Wave','CHANNEL 12: bursts EOT + Weaken','magic','🌀',12,'channel'),
-    mk('Laser Burst','Deal 7 magic (30% pierces block)','magic','🔮',7),
+    mk('Mind Blast','CHANNEL 10: bursts EOT, pierces ALL block','magic','✨',10,'channel'),
+    mk('Psychic Wave','CHANNEL 15: bursts EOT + Weaken','magic','🌀',15,'channel'),
+    mk('Laser Burst','Deal 8 magic (40% pierces block)','magic','🔮',8),
     mk('Reality Warp','ECHO: copies previous card at 50%','magic','🪞',3,'echo'),
     mk('Arcane Shield','Gain 7 Block. FORTIFY 50% carries','defend','🔷',7,'fortify'),
-    mk('Focused Beam','⏳ CHANNEL 18 next turn — full pierce','magic','⚡',18,'channel',1,1,true),
-    mk('Overchannel','OVERCHANNEL 8: channels + corrodes 3','magic','🌀',8,'overchannel'),
-    mk('Solar Ray','Deal 6 magic laser (30% pierces)','magic','☀️',6)];
+    mk('Focused Beam','⏳ CHANNEL 22 next turn — full pierce','magic','⚡',22,'channel',1,1,true),
+    mk('Overchannel','OVERCHANNEL 10: channels + corrodes 4','magic','🌀',10,'overchannel'),
+    mk('Solar Ray','Deal 7 magic laser (40% pierces)','magic','☀️',7)];
 
   if(best==='Intelligence')return[sig,
     mk('Aerial Strike','Deal 6 from above, then draw 1 next turn','attack','🦅',6),
@@ -295,8 +297,8 @@ function pickEnemy(heroes,floor,isBoss,isElite,evilness=50){
   return makeEnemy(pick(wt.slice(clamp(lo,0,t-1),clamp(hi,lo+1,t))).hero,floor,isBoss,isElite);}
 
 function makeMap(){
-  const struct=[1,3,3,3,2,3,3,3,2,2,2,2,1,1,1];
-  const mergeTypes=[null,null,null,null,['shop','rest'],null,null,null,['shop','rest'],null,null,null,['rest'],['elite'],['boss']];
+  const struct=[1,3,3,3,2,3,3,3,2,2,2,2,1,1,1,1];
+  const mergeTypes=[null,null,null,null,['shop','rest'],null,null,null,['shop','rest'],null,null,null,['rest'],['elite'],['shop'],['boss']];
   const battleTypes=['battle','battle','battle','event','shop'];
   const map=[];
   for(let f=0;f<struct.length;f++){
@@ -308,10 +310,16 @@ function makeMap(){
     map.push(nodes);}
   for(let f=0;f<struct.length-1;f++){
     const cur=map[f],next=map[f+1];
-    if(cur.length===1)cur[0].conns=next.map(n=>n.id);
-    else if(next.length===1)cur.forEach(n=>{n.conns=[next[0].id];});
-    else if(cur.length===next.length)cur.forEach((n,i)=>{n.conns=[next[i].id];});
-    else cur.forEach((n,i)=>{n.conns=[next[clamp(i,0,next.length-1)].id];});}
+    if(cur.length===1){cur[0].conns=next.map(n=>n.id);}
+    else if(next.length===1){cur.forEach(n=>{n.conns=[next[0].id];});}
+    else{cur.forEach((n,i)=>{
+      // Proportionally map index, then also connect to 1 adjacent neighbor for real branching
+      const main=Math.round(i*(next.length-1)/(cur.length-1));
+      const ids=new Set([next[main].id]);
+      if(main+1<next.length)ids.add(next[main+1].id);
+      if(main-1>=0)ids.add(next[main-1].id);
+      n.conns=[...ids].slice(0,2);// max 2 choices per node
+    });}}
   return map;}
 
 const EVENTS=[
@@ -340,7 +348,7 @@ const ALL_RELICS=[
   {id:'r4',name:'Mana Siphon',desc:'Channel heals 25%',icon:'💎',syn:'CHANNEL',fx:'chanHeal',alignBias:'hero'},
   {id:'r5',name:'Titanium Shell',desc:'Fortify 65%',icon:'🐢',syn:'FORTIFY',fx:'fortUp',alignBias:'hero'},
   {id:'r6',name:'Regenerator',desc:'+2 HP/turn',icon:'💗',syn:'FORTIFY',fx:'regen',alignBias:'hero'},
-  {id:'r7',name:'Lightning Boots',desc:'Momentum at 3',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
+  {id:'r7',name:'Lightning Boots',desc:'Free card at 2 cards played (instead of 3)',icon:'👟',syn:'MOMENTUM',fx:'momDown',alignBias:'any'},
   {id:'r8',name:'Afterimage',desc:'+2 Block/card',icon:'👤',syn:'MOMENTUM',fx:'cardBlk',alignBias:'any'},
   {id:'r9',name:'Plague Mask',desc:'All poison +2',icon:'🎭',syn:'CORRODE',fx:'poisUp',alignBias:'villain'},
   {id:'r10',name:'Blood Ruby',desc:'Blood costs 3',icon:'💎',syn:'BLOOD',fx:'bloodCheap',alignBias:'villain'},
@@ -351,7 +359,7 @@ const ALL_RELICS=[
   {id:'r16',name:'Thick Skin',desc:'+8 max HP',icon:'💪',syn:'any',fx:'hpUp',alignBias:'hero'},
   {id:'r17',name:'Energy Cell',desc:'+1 energy',icon:'🔋',syn:'any',fx:'enUp',alignBias:'any'},
   {id:'r18',name:'Lucky Coin',desc:'+5% crit',icon:'🪙',syn:'any',fx:'critSmall',alignBias:'any'},
-  {id:'r19',name:'Charge Capacitor',desc:'Charge +3 value',icon:'⏳',syn:'CHARGE',fx:'chargePow',alignBias:'villain'},
+  {id:'r19',name:'Charge Capacitor',desc:'Charge cards deal/gain +3 extra when they fire',icon:'⏳',syn:'CHARGE',fx:'chargePow',alignBias:'villain'},
   {id:'r20',name:'War Paint',desc:'+10% crit',icon:'🎨',syn:'any',fx:'critUp',alignBias:'villain'},
   {id:'r21',name:'Page Turner',desc:'Draw +1 superpower each turn',icon:'📄',syn:'any',fx:'drawUp',alignBias:'hero'},
   {id:'r22',name:'Utility Belt',desc:'Start each turn with 6 superpowers',icon:'🎒',syn:'any',fx:'handSize',alignBias:'any'},
@@ -399,10 +407,11 @@ function calcProjectedDmg(card,battle,relics,en){
   if(card.keyword==='catalyze'){return{label:`${en.poisonStacks||0} dmg (= poison)`,color:'#88ff44'};}
   if(card.keyword==='channel'||card.keyword==='overchannel'){
     const pow=hasR('chanPow')?1.3:1;const add=Math.floor((card.value+chB)*pow);
-    return{label:`+${add}ch → ${battle.channelStacks+add} burst`,color:'#bb55ff'};}
+    const projected=Math.min(40,battle.channelStacks+add);
+    return{label:`+${add}ch → ${projected} burst${projected>=40?' (MAX)':''}`,color:'#bb55ff'};}
   switch(card.type){
     case 'attack':case 'rage':{
-      const cb=card.keyword==='combo'?(battle.comboCount*(hasR('comboPow')?4:3)):0;
+      const cb=Math.min(card.keyword==='combo'?(battle.comboCount*(hasR('comboPow')?3:2)):0,10);
       const fb=battle.comboCount===0&&hasR('firstStrike')?4:0;
       const defMit=Math.floor((en.def||0)*0.35);
       let tot=0;let blkUsed=0;
@@ -418,13 +427,15 @@ function calcProjectedDmg(card,battle,relics,en){
     case 'magic':{
       const defMit=Math.floor((en.def||0)*0.18);
       let d=Math.max(1,Math.floor(card.value+chB)-defMit);
-      const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(en.block||0,b2);
+      const p2=Math.floor(d*0.4),b2=d-p2,bl=Math.min(en.block||0,b2);
       const actual=p2+b2-bl;
       const parts=[];if(defMit>0)parts.push(`-${defMit} def`);if((en.block||0)>0)parts.push(`${p2} pierce`);
       const sfx=parts.length?` (${parts.join(', ')})` :'';
       return{label:`${actual} dmg${sfx}`,color:'#bb55ff'};}
     case 'defend':return{label:`+${card.value+chB} block`,color:'#4499ff'};
-    case 'poison':{const extra=hasR('poisUp')?2:0;return{label:`+${Math.ceil(card.value||3)+extra+chB} poison`,color:'#44dd66'};}
+    case 'poison':{const extra=hasR('poisUp')?2:0;const amt=Math.ceil(card.value||3)+extra+chB;
+      const corrodeNote=card.keyword==='corrode'?` (corrode, total ${(en.corrodeStacks||0)+amt})`:`→ ${(en.poisonStacks||0)+amt} total`;
+      return{label:`+${amt} poison${corrodeNote}`,color:'#44dd66'};}
     case 'heal':return{label:`+${card.value+chB} HP`,color:'#55ddbb'};
     case 'draw':return{label:`draw +${card.value+chB}`,color:'#33ddff'};
     default:return null;
@@ -478,23 +489,26 @@ function resolveCard(card,en,st,relics,pHp,pMaxHp,healFn,prevCard){
 
   switch(card.type){
     case 'attack':case 'rage':{
-      const cb=card.keyword==='combo'?(st.comboCount*(hasR('comboPow')?4:3)):0;
+      const rawCb=card.keyword==='combo'?(st.comboCount*(hasR('comboPow')?3:2)):0;
+      const cb=Math.min(rawCb,10);// cap combo bonus at +10 total
       const fb=st.comboCount===0&&hasR('firstStrike')?4:0;
       // Enemy defense (from CSV Defense stat) mitigates physical damage
       const defMit=Math.floor((en.def||0)*0.35);
       let tot=0;for(let h=0;h<card.hits;h++){let raw=Math.floor((card.value+cb+fb+chB)*cm/card.hits);let d=Math.max(1,raw-defMit);const bl=Math.min(en.block,d);en.block-=bl;d-=bl;en.gameHp=Math.max(0,en.gameHp-d);tot+=d;}
-      msg=`${card.icon} ${card.name} → ${tot}${crit?' CRIT!':''}${cb>0?' +'+cb:''}${defMit>0?` (−${defMit} def)`:''}`;
-      if(card.keyword==='combo'||card.type==='attack')st.comboCount++;
+      msg=`${card.icon} ${card.name} → ${tot}${crit?' CRIT!':''}${cb>0?' +'+cb+' combo':''}${defMit>0?` (−${defMit} def)`:''}`;
+      // Only COMBO keyword cards increment the combo counter (not all attacks)
+      if(card.keyword==='combo')st.comboCount++;
       st.momentum++;break;}
     case 'magic':{
       if(card.keyword==='channel'){
-        const pow=hasR('chanPow')?1.3:1;st.channelStacks+=Math.floor((card.value+chB)*cm*pow);
+        const pow=hasR('chanPow')?1.3:1;const gain=Math.floor((card.value+chB)*cm*pow);
+        st.channelStacks=Math.min(40,st.channelStacks+gain);
         if(card.debuff)en.weakened=(en.weakened||0)+card.debuff;
-        msg=`✨ CHANNEL +${Math.floor((card.value+chB)*cm*pow)} [${st.channelStacks}]`;
+        msg=`✨ CHANNEL +${gain} [${st.channelStacks}${st.channelStacks>=40?' MAX':''}]`;
       }else{
         // Magic partially mitigated by defense (half as effective as physical)
         const defMit=Math.floor((en.def||0)*0.18);
-        let d=Math.max(1,Math.floor((card.value+chB)*cm)-defMit);const p2=Math.floor(d*0.3),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
+        let d=Math.max(1,Math.floor((card.value+chB)*cm)-defMit);const p2=Math.floor(d*0.4),b2=d-p2,bl=Math.min(en.block,b2);en.block-=bl;d=p2+b2-bl;en.gameHp=Math.max(0,en.gameHp-d);
         msg=`${card.icon} ${card.name} → ${d}${bl>0?` (${bl} blk, ${p2} pierced)`:''}`; }
       st.momentum++;break;}
     case 'defend':st.playerBlock+=card.value+chB;msg=`🛡️ +${card.value+chB} Block${card.keyword==='fortify'?' [FORTIFY]':''}`;st.momentum++;break;
@@ -514,7 +528,8 @@ const INIT_B={hand:[],drawPile:[],discardPile:[],energy:3,maxEnergy:3,playerBloc
   queuedPages:[],
   placedCards:[],pendingCharges:[],activeCharges:[],// activeCharges = from last turn, visually on page
   turn:1,phase:'player',log:[],turnLogStart:0,victory:false,defeat:false,
-  comboCount:0,channelStacks:0,momentum:0,momentumUsed:false,extraDraw:0};
+  comboCount:0,channelStacks:0,momentum:0,momentumUsed:false,extraDraw:0,frenzyCost:0,
+  playerPoison:0,playerCorrode:0};
 
 function bReduce(state,action){
   const s={...state};
@@ -532,7 +547,7 @@ function bReduce(state,action){
       const hasR=fx=>relics?.some(r=>r.fx===fx);
       if(card.keyword==='blood'){const cost=hasR('bloodCheap')?3:card.bloodCost;if(action.playerHp<=cost)return s;action.payBlood(cost);}
       else if(card.keyword==='frenzy'){/* frenzy costs 0 energy */}
-      else{let ec=card.cost;const momT=hasR('momDown')?3:4;
+      else{let ec=card.cost;const momT=hasR('momDown')?2:3;
         if(s.momentum>=momT&&!s.momentumUsed){ec=0;s.momentumUsed=true;s.log=[...s.log,'⚡ MOMENTUM! Free!'];}
         if(s.energy<ec)return s;s.energy-=ec;}
       // Place on grid using shape
@@ -558,6 +573,8 @@ function bReduce(state,action){
 
       // Only energy-costing cards count toward momentum (blood/frenzy have their own cost)
       if(card.keyword!=='blood'&&card.keyword!=='frenzy')s.momentum++;
+      // FRENZY costs 1 card from next hand
+      if(card.keyword==='frenzy')s.frenzyCost=(s.frenzyCost||0)+1;
       return s;}
 
     case 'END_TURN':{
@@ -592,24 +609,40 @@ function bReduce(state,action){
         });
       }
 
-      // 3. Channel burst
+      // 3. Channel burst — 15% of stacks carry to next turn (rewards building deep channel)
       if(s.channelStacks>0){
-        en.gameHp=Math.max(0,en.gameHp-s.channelStacks);en.weakened=(en.weakened||0)+2;
-        if(hasR('chanHeal'))localHealFn(Math.floor(s.channelStacks*0.25));
-        s.log=[...s.log,`✨ BURST! ${s.channelStacks} piercing + Weaken`];s.channelStacks=0;}
+        const burst=s.channelStacks;
+        en.gameHp=Math.max(0,en.gameHp-burst);en.weakened=(en.weakened||0)+2;
+        if(hasR('chanHeal'))localHealFn(Math.floor(burst*0.25));
+        const carry=Math.floor(burst*0.15);
+        s.log=[...s.log,`✨ BURST! ${burst} piercing + Weaken${carry>0?' ('+carry+' carries)':''}`];
+        s.channelStacks=carry;}
 
       if(hasR('regen'))localHealFn(2);
 
-      // Poison tick
+      // Passive alignment bonuses
+      const ev=action.evilness??50;
+      if(ev<=20){s.playerBlock+=3;s.log=[...s.log,'🛡️ RIGHTEOUS: +3 Block'];}
+      if(ev>=80){en.poisonStacks=(en.poisonStacks||0)+1;en.corrodeStacks=(en.corrodeStacks||0)+1;s.log=[...s.log,'☠️ CORRUPT: +1 Corrode'];}
+
+      // Enemy poison tick
       if(en.poisonStacks>0){en.gameHp=Math.max(0,en.gameHp-en.poisonStacks);
         s.log=[...s.log,`☠ Poison: ${en.poisonStacks}`];
         const corr=en.corrodeStacks||0;en.poisonStacks=corr+Math.max(0,en.poisonStacks-corr-1);}
+
+      // Player poison tick
+      if((s.playerPoison||0)>0){
+        totalHeal-=s.playerPoison;// applied as negative heal so setPlayerHp sees it
+        s.log=[...s.log,`☠️ You: -${s.playerPoison} poison${s.playerCorrode>0?' (corrode)':''}`];
+        const pc=s.playerCorrode||0;s.playerPoison=pc+Math.max(0,s.playerPoison-pc-1);}
 
       if(en.gameHp<=0){s.enemy=en;s.victory=true;s.phase='done';return s;}
 
       // 4. Enemy acts — one panel per turn, cycling through the plan
       let pHp=Math.min(playerMaxHp,playerHp+totalHeal);let pBlk=s.playerBlock;
       const pDef=action.playerDef||2;// player's defense stat reduces incoming physical damage
+      // Block decay each turn: prevents runaway stacking; FORTIFY enemies decay slower
+      if(en.block>0){const hasFortDeck=en.deck?.some(c=>c.keyword==='fortify');en.block=Math.floor(en.block*(hasFortDeck?0.85:0.65));}
       const intentCard=s.enemyPlan[s.enemyPlanIdx]||s.enemyPlan[0];
       if(intentCard&&pHp>0){
         const panelNum=s.enemyPlanIdx+1;
@@ -625,10 +658,10 @@ function bReduce(state,action){
             s.log=[...s.log,`✨ [${panelNum}] ${en.Name} ${cn}: CHANNEL ${d} (full pierce)`];break;}
           case 'defend':en.block+=intentCard.intentVal;s.log=[...s.log,`🔵 [${panelNum}] ${en.Name} ${cn}: +${intentCard.intentVal} Blk`];break;
           case 'buff':en.atk+=intentCard.intentVal;s.log=[...s.log,`🟡 [${panelNum}] ${en.Name} ${cn}: ATK +${intentCard.intentVal}`];break;
-          case 'poison':{let d=intentCard.intentVal;const bl=Math.min(pBlk,Math.floor(d*0.5));pBlk-=bl;d=Math.max(0,d-bl);pHp=Math.max(0,pHp-d);
-            s.log=[...s.log,`☠️ [${panelNum}] ${en.Name} ${cn}: ${d} poison${bl>0?' ('+bl+' blk)':''}`];break;}
-          case 'corrode':{const d=intentCard.intentVal;pHp=Math.max(0,pHp-d);
-            s.log=[...s.log,`☠️ [${panelNum}] ${en.Name} ${cn}: CORRODE ${d} (pierces block)`];break;}
+          case 'poison':{const stacks=intentCard.intentVal;const bl=Math.min(pBlk,Math.floor(stacks*0.5));pBlk-=bl;const applied=Math.max(0,stacks-bl);s.playerPoison=(s.playerPoison||0)+applied;
+            s.log=[...s.log,`☠️ [${panelNum}] ${en.Name} ${cn}: +${applied} Poison${bl>0?' ('+bl+' blk)':''} → ${s.playerPoison} total`];break;}
+          case 'corrode':{const stacks=intentCard.intentVal;s.playerPoison=(s.playerPoison||0)+stacks;s.playerCorrode=(s.playerCorrode||0)+stacks;
+            s.log=[...s.log,`☠️ [${panelNum}] ${en.Name} ${cn}: CORRODE +${stacks} (pierces, total ${s.playerPoison})`];break;}
           case 'heal':{en.gameHp=Math.min(en.gameMaxHp,en.gameHp+intentCard.intentVal);
             s.log=[...s.log,`💚 [${panelNum}] ${en.Name} ${cn}: heals ${intentCard.intentVal}`];break;}
           case 'shieldbash':{const d=Math.max(0,en.block-(en.weakened||0));const bl=Math.min(pBlk,d);pBlk-=bl;pHp=Math.max(0,pHp-(d-bl));
@@ -641,7 +674,13 @@ function bReduce(state,action){
       // Advance to next panel; regenerate plan when the cycle completes
       const nextIdx=(s.enemyPlanIdx+1)%s.enemyPlan.length;
       s.enemyPlanIdx=nextIdx;
-      if(nextIdx===0)s.enemyPlan=makeEnemyPlan(en);
+      if(nextIdx===0){
+        s.enemyPlan=makeEnemyPlan(en);
+        // Block resets each full plan cycle — FORTIFY carries a fraction, less so early floors
+        const hasFort=en.deck?.some(c=>c.keyword==='fortify');
+        const fl=en.floor||0;
+        en.block=hasFort?Math.floor(en.block*(fl<3?0.25:0.45)):0;
+      }
 
       // Sync remaining block after enemy consumed some (needed for accurate Fortify carry)
       s.playerBlock=pBlk;
@@ -658,7 +697,7 @@ function bReduce(state,action){
       const disc=[...s.discardPile,...s.hand,...allPlacedCards,...s.activeCharges];
       let draw=[...s.drawPile];
       const baseHand=5+(hasR('handSize')?1:0)+(hasR('drawUp')?1:0);
-      const neededHand=baseHand+(s.extraDraw||0);
+      const neededHand=Math.max(1,baseHand+(s.extraDraw||0));
       if(draw.length<neededHand){draw=[...draw,...shuffle(disc)];s.discardPile=[];}else{s.discardPile=disc;}
       const hs=Math.min(neededHand,draw.length);s.hand=draw.slice(0,hs);s.drawPile=draw.slice(hs);
       s.extraDraw=0;
@@ -735,6 +774,12 @@ export default function ComicSpire(){
   const[deck,setDeck]=useState([]);
   const[gold,setGold]=useState(0);
   const[evilness,setEvilness]=useState(50);
+  const alignment=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+  const alignLabel=evilness<=20?'RIGHTEOUS':evilness<=40?'VALIANT':evilness<=59?'ROGUE':evilness<=79?'RUTHLESS':'CORRUPT';
+  const alignColor=alignment==='hero'?'#33aaff':alignment==='villain'?'#ff3366':'#aaaaaa';
+  const accent=alignment==='villain'?'#ff3366':alignment==='hero'?'#33aaff':'#ffaa33';
+  const bg1=alignment==='villain'?'#12060f':alignment==='hero'?'#060d18':'#0d0d14';
+  const bg2=alignment==='villain'?'#200e1c':alignment==='hero'?'#0c1628':'#14141e';
   const[hexMap,setHexMap]=useState(null);
   const[curFloor,setCurFloor]=useState(0);
   const[curNodeId,setCurNodeId]=useState(null);
@@ -759,15 +804,35 @@ export default function ComicSpire(){
   const[tooltip,setTooltip]=useState(null);
   const[battle,dispatch]=useReducer(bReduce,INIT_B);
   const[floaters,setFloaters]=useState([]);
-  const[slatePreview,setSlatePreview]=useState([]);
+  const[slatePreview,setSlatePreview]=useState(null);
   const[showLog,setShowLog]=useState(false);
   const[restPopup,setRestPopup]=useState(null);
   const[damageFlash,setDamageFlash]=useState(false);
   const prevHpRef=useRef(null);
+  const prevAlignLabelRef=useRef(null);
+  const mapScrollRef=useRef(null);
   const[shake,setShake]=useState(false);
   const[animPhase,setAnimPhase]=useState(null);
+  const[alignNotif,setAlignNotif]=useState(null);
   // Clear tooltip and floaters on any screen change
   useEffect(()=>{setTooltip(null);setFloaters([]);},[screen]);
+  // Cutscene: scroll to reachable nodes (bottom of column-reverse map) whenever map opens
+  useEffect(()=>{
+    if(screen==='map'){
+      setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),350);
+    }
+  },[screen]);
+
+  // Alignment tier change notification
+  useEffect(()=>{
+    if(prevAlignLabelRef.current===null){prevAlignLabelRef.current=alignLabel;return;}
+    if(prevAlignLabelRef.current!==alignLabel){
+      const c=evilness<=20?'#33aaff':evilness<=40?'#55ccff':evilness<=59?'#ffaa33':evilness<=79?'#ff6633':'#ff3366';
+      setAlignNotif({label:alignLabel,color:c,sub:evilness<=20?'🛡️ +3 Block/turn passive unlocked':evilness>=80?'☠️ +1 Corrode/turn passive unlocked':evilness<=40?'Enemies: Villains flee you':evilness>=60?'Enemies: Heroes hunt you':'Enemies: Anyone'});
+      prevAlignLabelRef.current=alignLabel;
+      setTimeout(()=>setAlignNotif(null),3500);
+    }
+  },[alignLabel]);
   const addFloat=useCallback((t,c,side='enemy')=>{const id=uid();setFloaters(p=>[...p,{id,text:t,color:c,x:side==='enemy'?60+Math.random()*24:6+Math.random()*24,y:18+Math.random()*22}]);setTimeout(()=>setFloaters(p=>p.filter(f=>f.id!==id)),1400);},[]);
   const doShake=useCallback(()=>{setShake(true);setTimeout(()=>setShake(false),350);},[]);
   const healPlayer=useCallback(amt=>setPlayer(p=>p?{...p,hp:Math.min(p.maxHp,p.hp+amt)}:p),[]);
@@ -784,7 +849,8 @@ export default function ComicSpire(){
     const en=battle.enemy;setGold(p=>p+15+Math.floor(Math.random()*20)+curFloor*3+(en?.isBoss?50:en?.isElite?20:0)+(hasR('goldUp')?10:0));
     setCopiedAbilities(p=>[...p,{name:en.Name,sig:en.signature.name,arch:en.signature.archetype,icon:en.signature.icon,kw:en.signature.keyword}]);
     setPotLv(p=>p+1);
-    setPlayer(p=>p?{...p,maxHp:p.maxHp+5,hp:Math.min(p.maxHp+5,p.hp+5),def:(p.def||2)+1}:p);
+    // DEF increases every other level (odd levels: 3, 5, 7...)
+    setPlayer(p=>p?{...p,maxHp:p.maxHp+5,hp:Math.min(p.maxHp+5,p.hp+5),def:(p.def||2)+(potLv%2===0?1:0)}:p);
     setRewardRelics(pickRelics(relics,3));setRewardPhase('absorb');
     setSelectedAbsorbCard(null);setAbsorbedCardIds([]);
     setRewardCards(en.deck||[en.signature]);
@@ -815,9 +881,9 @@ export default function ComicSpire(){
     // Evilness shifts based on card keywords played this turn
     const allPlayedCards=[...battle.queuedPages.flatMap(p=>p.cards||[]),...battle.placedCards];
     if(allPlayedCards.length>0){
-      const EVIL_KW={frenzy:2,blood:2,corrode:1,overchannel:1,catalyze:1};
-      const GOOD_KW={fortify:-1,shieldbash:0,echo:0,channel:0,momentum:0,combo:0,charge:0};
-      const TYPE_SHIFT={poison:1,rage:1,heal:-1,defend:-1,draw:-1,attack:0,magic:0};
+      const EVIL_KW={frenzy:5,blood:5,corrode:3,overchannel:3,catalyze:3};
+      const GOOD_KW={fortify:-4,shieldbash:-2,echo:0,channel:0,momentum:0,combo:0,charge:0};
+      const TYPE_SHIFT={poison:3,rage:3,heal:-3,defend:-3,draw:-2,attack:0,magic:0};
       let shift=0;
       allPlayedCards.forEach(c=>{
         if(c.keyword&&EVIL_KW[c.keyword]!==undefined)shift+=EVIL_KW[c.keyword];
@@ -829,23 +895,19 @@ export default function ComicSpire(){
     const finalPages=[...battle.queuedPages];
     if(battle.placedCards.length>0)finalPages.push({cards:battle.placedCards});
     if(finalPages.length>0){
-      // Build a flat ROWS×COLS panel grid: each cell gets the card type/icon placed there
-      const gridCells=Array(ROWS*COLS).fill(null);
+      // Build slate preview: one entry per actual card placed (up to 4)
       const allCards=finalPages.flatMap(pg=>pg.cards||[]);
-      allCards.forEach(card=>{
-        const span=panelSpanForCard(card);
-        const start=panelIdx(card.row,card.col);
-        for(let i=0;i<span;i++){const ci=start+i;if(ci<ROWS*COLS&&gridCells[ci]===null)gridCells[ci]={type:card.type,icon:card.icon};}
-      });
-      setSlatePreview(gridCells);
-      setTimeout(()=>setSlatePreview([]),1400);
+      const cardData=allCards.slice(0,4).map(c=>({type:c.type,icon:c.icon}));
+      const slateVariant=evilness>=60?'Brutal':'Bubble';
+      setSlatePreview({cards:cardData,variant:slateVariant});
+      setTimeout(()=>setSlatePreview(null),1500);
     }
     setTimeout(()=>{
       dispatch({type:'END_TURN',relics,playerHp:player?.hp||0,playerMaxHp:player?.maxHp||1,playerDef:player?.def||2,
-        getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
+        evilness,getPlayerHp:()=>player?.hp||0,setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),healFn:healPlayer});
       doShake();setAnimPhase(null);
     },400);
-  },[battle,player,relics,doShake,healPlayer]);
+  },[battle,player,relics,doShake,healPlayer,evilness]);
 
   const selectNode=useCallback(nodeId=>{
     if(!hexMap)return;const[f,i]=nodeId.split('-').map(Number);
@@ -865,7 +927,18 @@ export default function ComicSpire(){
       const alignedRelics=ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id)&&(r.alignBias==='any'||r.alignBias===al||!r.alignBias));
       setShopRelics(shuffle(alignedRelics.length>=2?alignedRelics:ALL_RELICS.filter(r=>!relics.some(o=>o.id===r.id))).slice(0,2).map(r=>({...r,price:r.syn==='any'?30:45})));
       setScreen('shop');}
-    else if(node.type==='event'){setCurEvent(pick(EVENTS));setScreen('event');}
+    else if(node.type==='event'){
+      const al=evilness<=40?'hero':evilness>=60?'villain':'neutral';
+      // Filter events by alignment: heroes avoid villain-leaning, villains avoid hero-leaning
+      const neutralEvents=EVENTS.slice(0,5);
+      const heroEvents=EVENTS.slice(5,9);
+      const villainEvents=EVENTS.slice(9,13);
+      let pool=neutralEvents;
+      if(al==='hero')pool=[...neutralEvents,...neutralEvents,...heroEvents];// hero gets hero events more often
+      else if(al==='villain')pool=[...neutralEvents,...neutralEvents,...villainEvents];
+      else pool=[...neutralEvents,...heroEvents.slice(0,2),...villainEvents.slice(0,2)];
+      setCurEvent(pick(pool));setScreen('event');
+    }
     else if(node.type==='rest'){const h=Math.floor(player?.maxHp*0.3||12);setRestPopup({hp:h});}
   },[hexMap,curNodeId,heroes,player,relics,healPlayer]);
 
@@ -884,18 +957,11 @@ export default function ComicSpire(){
 
   const pickRewardRelic=useCallback(r=>{if(r)applyRelic(r);if(hexMap&&curFloor>=hexMap.length-1){setScreen('victory');return;}setScreen('map');},[hexMap,curFloor,applyRelic]);
 
-  const alignment=evilness<=40?'hero':evilness>=60?'villain':'neutral';
-  const alignLabel=evilness<=20?'RIGHTEOUS':evilness<=40?'VALIANT':evilness<=59?'ROGUE':evilness<=79?'RUTHLESS':'CORRUPT';
-  const alignColor=alignment==='hero'?'#33aaff':alignment==='villain'?'#ff3366':'#aaaaaa';
-  const accent=alignment==='villain'?'#ff3366':alignment==='hero'?'#33aaff':'#ffaa33';
-  const bg1=alignment==='villain'?'#12060f':alignment==='hero'?'#060d18':'#0d0d14';
-  const bg2=alignment==='villain'?'#200e1c':alignment==='hero'?'#0c1628':'#14141e';
-
   // Keyword badge with tooltip — click to show, auto-dismiss after 3s
   const showTip=useCallback((info)=>{setTooltip(info);setTimeout(()=>setTooltip(p=>p===info?null:p),3000);},[]);
   const KW=({k})=>{if(!k)return null;const info=KW_INFO[k];if(!info)return null;
     return <span onClick={(e)=>{e.stopPropagation();showTip(info);}} onMouseEnter={()=>showTip(info)} onMouseLeave={()=>setTooltip(null)}
-      style={{fontSize:7,padding:'0 3px',borderRadius:2,background:`${info.color}22`,color:info.color,border:`1px solid ${info.color}44`,fontFamily:FD,letterSpacing:0.5,cursor:'help'}}>{info.name}</span>;};
+      style={{fontSize:9,padding:'1px 4px',borderRadius:2,background:`${info.color}22`,color:info.color,border:`1px solid ${info.color}44`,fontFamily:FD,letterSpacing:0.5,cursor:'help'}}>{info.name}</span>;};
 
   const HpBar=({hp,max,color,h=13})=> <div style={{position:'relative',height:h,background:'#1a1a2a',borderRadius:h/2,overflow:'hidden',border:'1px solid #333',minWidth:80}}><div style={{height:'100%',width:`${clamp(hp/max*100,0,100)}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:h/2,transition:'width 0.4s'}}/><div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:h*0.6,fontFamily:FB,fontWeight:700,color:'#fff',textShadow:'0 1px 2px #000'}}>{hp}/{max}</div></div>;
 
@@ -905,41 +971,47 @@ export default function ComicSpire(){
     return <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:compact?5:6,padding:compact?'4px 6px':'3px 6px',background:`${cfg.c}18`,border:`1px solid ${cfg.c}44`,borderRadius:5,marginTop:compact?0:2,lineHeight:1,maxWidth:'94%'}}>
       <span style={{fontSize:compact?18:20}}>{cfg.i}</span>
       <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:1}}>
-        {nm&&<span style={{color:'#eee',fontFamily:FD,fontSize:compact?8:9,lineHeight:1.1}}>{nm.length>12?nm.slice(0,10)+'…':nm}</span>}
+        {nm&&<span style={{color:'#eee',fontFamily:FD,fontSize:compact?10:11,lineHeight:1.1}}>{nm.length>14?nm.slice(0,12)+'…':nm}</span>}
         <span style={{color:cfg.c,fontFamily:FB,fontSize:compact?10:11,fontWeight:700}}>{cfg.t}</span>
       </div>
     </div>;};
 
   const Card=({card,onClick,sel,price,dis,projDmg})=>{const kInfo=KW_INFO[card.keyword];const tc=kInfo?.color||TC[card.type]||'#888';
-    return <div onClick={()=>!dis&&onClick?.(card)} style={{width:118,minWidth:118,height:165,borderRadius:8,overflow:'hidden',cursor:dis?'default':'pointer',background:bg2,border:`2px solid ${sel?'#fff':tc}`,boxShadow:sel?`0 0 18px ${tc}66`:`0 3px 8px #00000088`,transform:sel?'translateY(-10px) scale(1.05)':'scale(1)',transition:'all 0.2s',flexShrink:0,opacity:dis?0.3:1}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'2px 5px',background:`${tc}18`}}>
-        <div style={{width:18,height:18,borderRadius:'50%',background:card.keyword==='blood'?'#ff3333':card.keyword==='frenzy'?'#ff55aa':tc,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:FD,fontSize:10,color:'#000',fontWeight:700}}>{card.keyword==='blood'?'♥'+(hasR('bloodCheap')?3:card.bloodCost):card.keyword==='frenzy'?'0':card.cost}</div>
-        <div style={{fontSize:6,fontFamily:FD,color:tc,letterSpacing:1}}>{card.type.toUpperCase()}</div>
-        {card.charge&&<div style={{fontSize:7,color:'#ffaa33',fontFamily:FD}}>⏳</div>}
-        <div style={{fontSize:5,color:'#999',fontFamily:FD}}>{(card.shape||'s1').toUpperCase()}</div>
+    return <div onClick={()=>!dis&&onClick?.(card)} style={{width:122,minWidth:122,height:178,borderRadius:8,overflow:'hidden',cursor:dis?'default':'pointer',background:bg2,border:`2px solid ${sel?'#fff':tc}`,boxShadow:sel?`0 0 18px ${tc}66`:`0 3px 8px #00000088`,transform:sel?'translateY(-10px) scale(1.05)':'scale(1)',transition:'all 0.2s',flexShrink:0,opacity:dis?0.3:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3px 6px',background:`${tc}18`}}>
+        <div style={{width:20,height:20,borderRadius:'50%',background:card.keyword==='blood'?'#ff3333':card.keyword==='frenzy'?'#ff55aa':tc,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:FD,fontSize:11,color:'#000',fontWeight:700}}>{card.keyword==='blood'?'♥'+(hasR('bloodCheap')?3:card.bloodCost):card.keyword==='frenzy'?'0':card.cost}</div>
+        <div style={{fontSize:10,fontFamily:FD,color:tc,letterSpacing:1}}>{card.type.toUpperCase()}</div>
+        {card.charge&&<div style={{fontSize:10,color:'#ffaa33',fontFamily:FD}}>⏳</div>}
       </div>
-      <div style={{height:26,display:'flex',alignItems:'center',justifyContent:'center',background:`radial-gradient(circle,${card.color}15,transparent)`,fontSize:18}}>{card.icon}</div>
-      <div style={{padding:'2px 5px',flex:1}}>
-        <div style={{fontFamily:FD,fontSize:9.5,color:'#fff',lineHeight:1.1,marginBottom:1,display:'flex',alignItems:'center',gap:2,flexWrap:'wrap'}}>{card.name} <KW k={card.keyword}/></div>
-        <div style={{fontFamily:FB,fontSize:8,color:'#aaa',lineHeight:1.2}}>{card.desc}</div>
+      <div style={{height:28,display:'flex',alignItems:'center',justifyContent:'center',background:`radial-gradient(circle,${card.color}15,transparent)`,fontSize:20}}>{card.icon}</div>
+      <div style={{padding:'3px 6px',flex:1}}>
+        <div style={{fontFamily:FD,fontSize:10,color:'#fff',lineHeight:1.2,marginBottom:2,display:'flex',alignItems:'center',gap:2,flexWrap:'wrap'}}>{card.name} <KW k={card.keyword}/></div>
+        <div style={{fontFamily:FB,fontSize:10,color:'#aaa',lineHeight:1.3}}>{card.desc}</div>
       </div>
-      <div style={{padding:'1px 5px 3px',borderTop:'1px solid #ffffff06',fontSize:7}}>
-        {price!=null?<span style={{fontFamily:FD,fontSize:10,color:gold>=price?'#ffd700':'#ff4455'}}>💰{price}</span>:
-         projDmg!=null?<span style={{fontFamily:FD,fontSize:8,color:projDmg.color,fontWeight:700}}>{projDmg.label}</span>:
-          <span style={{color:card.copiedFrom?tc:'#444',fontFamily:FB}}>{card.copiedFrom?'🔓'+card.heroName:'Basic'}</span>}
+      <div style={{padding:'2px 6px 4px',borderTop:'1px solid #ffffff06'}}>
+        {price!=null?<span style={{fontFamily:FD,fontSize:11,color:gold>=price?'#ffd700':'#ff4455'}}>💰{price}</span>:
+         projDmg!=null?<span style={{fontFamily:FD,fontSize:10,color:projDmg.color,fontWeight:700}}>{projDmg.label}</span>:
+          <span style={{fontSize:10,color:card.copiedFrom?tc:'#444',fontFamily:FB}}>{card.copiedFrom?'🔓'+card.heroName:'Basic'}</span>}
       </div>
     </div>;};
 
   const Relic=({relic,onClick,price,dis})=>{const sc=KW_INFO[relic.syn?.toLowerCase()]?.color||'#ffaa33';
-    return <div onClick={()=>!dis&&onClick?.(relic)} style={{width:130,padding:'6px 8px',background:bg2,border:`1.5px solid ${sc}33`,borderRadius:8,cursor:dis?'default':'pointer',opacity:dis?0.3:1,transition:'all 0.2s'}}
+    return <div onClick={()=>!dis&&onClick?.(relic)} style={{width:140,padding:'8px 10px',background:bg2,border:`1.5px solid ${sc}33`,borderRadius:8,cursor:dis?'default':'pointer',opacity:dis?0.3:1,transition:'all 0.2s'}}
       onMouseEnter={e=>{if(!dis){e.currentTarget.style.borderColor=sc;e.currentTarget.style.transform='translateY(-3px)';}}}
       onMouseLeave={e=>{e.currentTarget.style.borderColor=`${sc}33`;e.currentTarget.style.transform='';}}>
-      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2}}><span style={{fontSize:16}}>{relic.icon}</span><div><div style={{fontFamily:FD,fontSize:10,color:'#fff'}}>{relic.name}</div><div style={{fontSize:7,color:sc,fontFamily:FD}}>AMP · {relic.syn==='any'?'UNIVERSAL':relic.syn}</div></div></div>
-      <div style={{fontFamily:FB,fontSize:8,color:'#999',lineHeight:1.2}}>{relic.desc}</div>
-      {price!=null&&<div style={{fontFamily:FD,fontSize:10,color:gold>=price?'#ffd700':'#ff4455',marginTop:2}}>💰{price}</div>}
+      <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}><span style={{fontSize:18}}>{relic.icon}</span><div><div style={{fontFamily:FD,fontSize:11,color:'#fff'}}>{relic.name}</div><div style={{fontSize:10,color:sc,fontFamily:FD}}>AMP · {relic.syn==='any'?'UNIVERSAL':relic.syn}</div></div></div>
+      <div style={{fontFamily:FB,fontSize:10,color:'#999',lineHeight:1.3}}>{relic.desc}</div>
+      {price!=null&&<div style={{fontFamily:FD,fontSize:11,color:gold>=price?'#ffd700':'#ff4455',marginTop:3}}>💰{price}</div>}
     </div>;};
 
-  const CSS=`@import url('${FURL}');@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes shakeAnim{0%,100%{transform:translate(0)}15%{transform:translate(-5px,2px)}35%{transform:translate(4px,-3px)}55%{transform:translate(-3px,4px)}75%{transform:translate(5px,-2px)}}@keyframes floatDmg{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-80px) scale(1.5)}}@keyframes enterCard{from{opacity:0;transform:translateY(20px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes chargeGlow{0%,100%{box-shadow:inset 0 0 8px #ffaa3322}50%{box-shadow:inset 0 0 16px #ffaa3366}}@keyframes dmgFlash{0%{opacity:0.55}100%{opacity:0}}@keyframes spin{to{transform:rotate(360deg)}}`;
+  const CSS=`@import url('${FURL}');@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes shakeAnim{0%,100%{transform:translate(0)}15%{transform:translate(-5px,2px)}35%{transform:translate(4px,-3px)}55%{transform:translate(-3px,4px)}75%{transform:translate(5px,-2px)}}@keyframes floatDmg{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-80px) scale(1.5)}}@keyframes enterCard{0%{opacity:0;transform:translateY(70px) scale(0.75) rotate(-6deg)}60%{opacity:1;transform:translateY(-6px) scale(1.04) rotate(1deg)}100%{opacity:1;transform:translateY(0) scale(1) rotate(0deg)}}@keyframes chargeGlow{0%,100%{box-shadow:inset 0 0 8px #ffaa3322}50%{box-shadow:inset 0 0 16px #ffaa3366}}@keyframes dmgFlash{0%{opacity:0.55}100%{opacity:0}}@keyframes spin{to{transform:rotate(360deg)}}`;
+
+  // ═══ ALIGNMENT TIER NOTIFICATION ═══
+  const AlignNotif=()=>{if(!alignNotif)return null;
+    return <div style={{position:'fixed',top:60,left:'50%',transform:'translateX(-50%)',zIndex:210,background:'#111e',border:`2px solid ${alignNotif.color}`,borderRadius:10,padding:'10px 20px',textAlign:'center',boxShadow:`0 0 30px ${alignNotif.color}55`,animation:'fadeUp 0.3s ease both',pointerEvents:'none',minWidth:220}}>
+      <div style={{fontFamily:FD,fontSize:16,color:alignNotif.color,letterSpacing:2}}>{alignNotif.label}</div>
+      <div style={{fontFamily:FB,fontSize:11,color:'#aaa',marginTop:3}}>{alignNotif.sub}</div>
+    </div>;};
 
   // ═══ TOOLTIP OVERLAY — click anywhere to dismiss ═══
   const TooltipOverlay=()=>{if(!tooltip)return null;
@@ -958,7 +1030,7 @@ export default function ComicSpire(){
         <div style={{fontSize:12,letterSpacing:8,color:'#ffaa33',fontFamily:FB,animation:'fadeUp 0.5s ease both'}}>HACKBETA</div>
         <h1 style={{fontSize:'clamp(42px,8vw,72px)',textShadow:'4px 4px 0 #ff6600,8px 8px 0 #000',margin:'8px 0',animation:'pulse 3s ease-in-out infinite',lineHeight:1}}>COMIC SPIRE</h1>
         <div style={{fontSize:18,color:'#ffaa33',textShadow:'2px 2px 0 #000',margin:'6px 0',animation:'fadeUp 0.5s 0.15s ease both',opacity:0}}>POTENTIAL MAN</div>
-        <div style={{fontFamily:FB,fontSize:10,color:'#555',maxWidth:420,margin:'10px auto 16px',lineHeight:1.7,animation:'fadeUp 0.5s 0.3s ease both',opacity:0}}>
+        <div style={{fontFamily:FB,fontSize:13,color:'#666',maxWidth:420,margin:'10px auto 16px',lineHeight:1.7,animation:'fadeUp 0.5s 0.3s ease both',opacity:0}}>
           Place cards on a comic page panel. They resolve in reading order on END TURN.<br/>
           Bigger cards = bigger panels = harder to fit. Charge cards fire next turn.<br/>
           <span style={{color:'#ff4455'}}>Combo</span> · <span style={{color:'#bb55ff'}}>Channel</span> · <span style={{color:'#33ddff'}}>Momentum</span> · <span style={{color:'#4499ff'}}>Fortify</span> · <span style={{color:'#44dd66'}}>Corrode</span> · <span style={{color:'#ff7722'}}>Blood</span> · <span style={{color:'#dd88ff'}}>Echo</span> · <span style={{color:'#55aaff'}}>Shield Bash</span> · <span style={{color:'#88ff44'}}>Catalyze</span> · <span style={{color:'#aa44dd'}}>Overchannel</span> · <span style={{color:'#ff55aa'}}>Frenzy</span>
@@ -970,7 +1042,7 @@ export default function ComicSpire(){
   // ═══ MAP ═══
   if(screen==='map')return (
     <div style={{minHeight:'100vh',background:bg1,padding:12,fontFamily:FB,color:'#fff'}}>
-      <style>{CSS}</style><TooltipOverlay/>
+      <style>{CSS}</style><TooltipOverlay/><AlignNotif/>
       {restPopup&&<div style={{position:'fixed',inset:0,background:'#000b',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}}>
         <div style={{background:'#0d1a0d',border:'2px solid #66bb66',borderRadius:12,padding:'24px 32px',textAlign:'center',boxShadow:'0 0 40px #66bb6644'}}>
           <div style={{fontSize:36,marginBottom:8}}>🏕️</div>
@@ -990,10 +1062,10 @@ export default function ComicSpire(){
             <div style={{width:48,height:6,background:'#1a1a2a',borderRadius:3,overflow:'hidden',border:'1px solid #333'}}>
               <div style={{height:'100%',width:`${evilness}%`,background:`linear-gradient(90deg,#33aaff,${evilness<50?'#33aaff':'#ff3366'})`,borderRadius:3,transition:'width 0.5s'}}/>
             </div>
-            <span style={{fontFamily:FD,fontSize:7,color:alignColor}}>{alignLabel}</span>
+            <span style={{fontFamily:FD,fontSize:10,color:alignColor}}>{alignLabel}</span>
           </span>
           {relics.length>0&&<span title="Amps">{relics.map(r=>r.icon).join('')}</span>}
-          <button onClick={(e)=>{e.stopPropagation();setTooltip(null);setShowCodex(p=>!p);}} style={{fontFamily:FD,fontSize:8,padding:'1px 5px',background:`${accent}22`,border:`1px solid ${accent}44`,borderRadius:3,color:accent,cursor:'pointer'}}>📋</button>
+          <button onClick={(e)=>{e.stopPropagation();setTooltip(null);setShowCodex(p=>!p);}} style={{fontFamily:FD,fontSize:11,padding:'2px 6px',background:`${accent}22`,border:`1px solid ${accent}44`,borderRadius:3,color:accent,cursor:'pointer'}}>📋</button>
         </div>
       </div>
       {showCodex&&<div style={{position:'fixed',inset:0,background:'#000c',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:12}} onClick={()=>{setShowCodex(false);setTooltip(null);}}>
@@ -1002,21 +1074,21 @@ export default function ComicSpire(){
             {['powers','stats'].map(tab=><button key={tab} onClick={()=>setCodexTab(tab)} style={{fontFamily:FD,fontSize:10,padding:'3px 12px',background:codexTab===tab?`${accent}33`:'#1a1a2a',border:`1px solid ${codexTab===tab?accent:`${accent}33`}`,borderRadius:4,color:codexTab===tab?accent:'#555',cursor:'pointer',textTransform:'uppercase'}}>{tab==='powers'?'⚡ Superpowers':'📊 Stats'}</button>)}
           </div>
           {codexTab==='powers'&&<>
-            {copiedAbilities.length===0&&<div style={{fontSize:9,color:'#444',fontFamily:FB}}>No superpowers acquired yet.</div>}
-            {copiedAbilities.map((a,i)=> <div key={i} style={{fontSize:9,color:'#aaa',padding:'2px 0'}}>{a.icon} {a.sig} <KW k={a.kw}/> — {a.name}</div>)}
-            {relics.length>0&&<div style={{marginTop:6,borderTop:'1px solid #333',paddingTop:4}}><div style={{fontFamily:FD,fontSize:8,color:'#ffaa33',marginBottom:2}}>AMPS</div>{relics.map((r,i)=> <div key={i} style={{fontSize:9,color:'#888'}}>{r.icon} {r.name}: {r.desc}</div>)}</div>}
+            {copiedAbilities.length===0&&<div style={{fontSize:11,color:'#444',fontFamily:FB}}>No superpowers acquired yet.</div>}
+            {copiedAbilities.map((a,i)=> <div key={i} style={{fontSize:11,color:'#aaa',padding:'3px 0'}}>{a.icon} {a.sig} <KW k={a.kw}/> — {a.name}</div>)}
+            {relics.length>0&&<div style={{marginTop:8,borderTop:'1px solid #333',paddingTop:5}}><div style={{fontFamily:FD,fontSize:11,color:'#ffaa33',marginBottom:3}}>AMPS</div>{relics.map((r,i)=> <div key={i} style={{fontSize:11,color:'#888',padding:'2px 0'}}>{r.icon} {r.name}: {r.desc}</div>)}</div>}
           </>}
           {codexTab==='stats'&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 12px'}}>
             {[['❤️ HP',`${player?.hp} / ${player?.maxHp}`],['⚡ Max Energy',maxEnergy],['💰 Gold',gold],['🎯 Crit Chance',`${player?.critChance||10}%`],['📖 Deck Size',deck.length],['🏆 Floor',curFloor],['⚔️ Level',potLv],['✨ Superpowers',copiedAbilities.length],['🎒 Amps',relics.length]].map(([k,v])=>
               <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'3px 0',borderBottom:'1px solid #1a1a2a'}}>
-                <span style={{fontFamily:FB,fontSize:9,color:'#666'}}>{k}</span>
-                <span style={{fontFamily:FD,fontSize:10,color:accent}}>{v}</span>
+                <span style={{fontFamily:FB,fontSize:11,color:'#666'}}>{k}</span>
+                <span style={{fontFamily:FD,fontSize:11,color:accent}}>{v}</span>
               </div>)}
           </div>}
           <button onClick={()=>setShowCodex(false)} style={{marginTop:10,fontFamily:FD,fontSize:11,padding:'3px 14px',background:'#333',border:`1px solid ${accent}`,borderRadius:4,color:'#fff',cursor:'pointer'}}>CLOSE</button>
         </div>
       </div>}
-      {mapLog.length>0&&<div style={{maxWidth:500,margin:'0 auto 5px',padding:'3px 10px',background:`${accent}08`,border:`1px solid ${accent}22`,borderRadius:5,fontSize:9,textAlign:'center',color:'#999'}}>{mapLog[mapLog.length-1]}</div>}
+      {mapLog.length>0&&<div style={{maxWidth:500,margin:'0 auto 6px',padding:'4px 12px',background:`${accent}08`,border:`1px solid ${accent}22`,borderRadius:5,fontSize:11,textAlign:'center',color:'#aaa'}}>{mapLog[mapLog.length-1]}</div>}
       <h3 style={{fontFamily:FD,fontSize:14,textAlign:'center',color:accent,margin:'0 0 6px',letterSpacing:2}}>Floor {curFloor}</h3>
       <div style={{maxWidth:500,margin:'0 auto',display:'flex',flexDirection:'column-reverse',gap:0}}>
         {hexMap?.map((fn,fi)=>{
@@ -1030,7 +1102,7 @@ export default function ComicSpire(){
               const isCurPath=co?.conns?.includes(nxt.id);
               const anyPath=fn.some(n=>n.conns?.includes(nxt.id));
               const nc=NC[nxt.type]||'#555';
-              return <div key={ni} style={{width:42,height:6,borderRadius:3,
+              return <div key={ni} style={{width:50,height:6,borderRadius:3,
                 background:isCurPath?`${nc}cc`:anyPath?`${nc}22`:'#1a1a2a22',
                 boxShadow:isCurPath?`0 0 8px ${nc}88`:undefined,
                 transition:'background 0.3s',
@@ -1038,21 +1110,20 @@ export default function ComicSpire(){
             })}
           </div>;
           const floorRow=<div key={fi} style={{display:'flex',justifyContent:'center',gap:8,alignItems:'center',marginBottom:3}}>
-            <div style={{width:16,fontSize:7,color:isMerge?accent:'#333',fontFamily:FD,textAlign:'right'}}>{isMerge?'◆':fi}</div>
+            <div style={{width:20,fontSize:10,color:isMerge?accent:'#333',fontFamily:FD,textAlign:'right'}}>{isMerge?'◆':fi}</div>
             {fn.map(node=>{const reach=co?.conns?.includes(node.id);const isCur=node.id===curNodeId;const nc=NC[node.type]||'#555';
               return <div key={node.id} onClick={()=>reach?selectNode(node.id):null} style={{
-                width:42,height:42,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                width:50,height:50,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
                 background:isCur?`${nc}28`:node.visited?'#1a1a2a':reach?`${nc}10`:'#0a0a12',
                 border:`2px solid ${isCur?nc:reach?nc:node.visited?'#333':'#1a1a22'}`,
                 cursor:reach?'pointer':'default',
                 opacity:!reach&&!node.visited&&!isCur?0.15:1,
                 transition:'all 0.2s',
-                animation:reach&&!isCur?'pulse 2s ease-in-out infinite':undefined,
               }} onMouseEnter={e=>{if(reach){e.currentTarget.style.transform='scale(1.15)';e.currentTarget.style.boxShadow=`0 0 14px ${nc}88`;}}}
                  onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='';}}>
-                <div style={{fontSize:14}}>{NI[node.type]}</div>
-                <div style={{fontSize:5,color:isCur||reach?nc:'#444',fontFamily:FD,letterSpacing:0.5}}>{node.type.toUpperCase()}</div>
-                {reach&&<div style={{fontSize:4,color:nc,fontFamily:FD,letterSpacing:0.5}}>TAP</div>}
+                <div style={{fontSize:16}}>{NI[node.type]}</div>
+                <div style={{fontSize:9,color:isCur||reach?nc:'#444',fontFamily:FD,letterSpacing:0.5}}>{node.type.toUpperCase()}</div>
+                {reach&&<div style={{fontSize:8,color:nc,fontFamily:FD}}>TAP</div>}
               </div>;})}
           </div>;
           // In column-reverse layout: connector appears between this floor (below) and next floor (above)
@@ -1071,13 +1142,13 @@ export default function ComicSpire(){
             <div style={{textAlign:'center',flex:1}}>
               <div style={{fontFamily:FD,fontSize:11,color:accent,letterSpacing:2}}>⚡ YOU</div>
               <div style={{fontFamily:FD,fontSize:14,color:'#fff'}}>Potential Man</div>
-              <div style={{fontFamily:FB,fontSize:9,color:'#888'}}>Lv.{potLv} · {player?.hp}/{player?.maxHp} HP · {player?.def||2} DEF</div>
+              <div style={{fontFamily:FB,fontSize:11,color:'#888'}}>Lv.{potLv} · {player?.hp}/{player?.maxHp} HP · {player?.def||2} DEF</div>
             </div>
             <div style={{fontFamily:FD,fontSize:22,color:'#ff336688',padding:'0 10px'}}>VS</div>
             <div style={{textAlign:'center',flex:1}}>
               <div style={{fontFamily:FD,fontSize:11,color:ec,letterSpacing:2}}>{isVillain?'💀 VILLAIN':'⚔️ HERO'}</div>
               <div style={{fontFamily:FD,fontSize:14,color:ec}}>{en.Name}</div>
-              <div style={{fontFamily:FB,fontSize:9,color:'#888'}}>{en.effectiveClass?.toUpperCase()} · {en.gameHp} HP</div>
+              <div style={{fontFamily:FB,fontSize:11,color:'#888'}}>{en.effectiveClass?.toUpperCase()} · {en.gameHp} HP</div>
             </div>
           </div>
           <HpBar hp={en.gameHp} max={en.gameMaxHp} color={ec} h={10}/>
@@ -1088,17 +1159,17 @@ export default function ComicSpire(){
                 <div style={{width:8,height:40,background:'#1a1a2a',borderRadius:4,overflow:'hidden',border:'1px solid #333',position:'relative'}}>
                   <div style={{position:'absolute',bottom:0,width:'100%',height:`${pct*100}%`,background:pct>0.7?ec:pct>0.4?`${ec}88`:`${ec}44`,borderRadius:4,transition:'height 0.4s'}}/>
                 </div>
-                <span style={{fontFamily:FD,fontSize:6,color:'#666'}}>{label}</span>
-                <span style={{fontFamily:FD,fontSize:7,color:pct>0.6?ec:'#555'}}>{v}</span>
+                <span style={{fontFamily:FD,fontSize:9,color:'#666'}}>{label}</span>
+                <span style={{fontFamily:FD,fontSize:10,color:pct>0.6?ec:'#555'}}>{v}</span>
               </div>;})}
           </div>
           {/* Signature card teaser */}
           <div style={{padding:'6px 8px',background:`${ec}10`,border:`1px solid ${ec}33`,borderRadius:6,marginBottom:10}}>
-            <div style={{fontFamily:FD,fontSize:7,color:'#555',letterSpacing:1,marginBottom:3}}>🔓 DEFEAT TO UNLOCK:</div>
+            <div style={{fontFamily:FD,fontSize:11,color:'#555',letterSpacing:1,marginBottom:4}}>🔓 DEFEAT TO UNLOCK:</div>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:18}}>{en.signature.icon}</span>
-              <div><div style={{fontFamily:FD,fontSize:10,color:'#fff'}}>{en.signature.name} <KW k={en.signature.keyword}/>{en.signature.charge&&<span style={{color:'#ffaa33',fontSize:8}}> ⏳</span>}</div>
-                <div style={{fontSize:8,color:'#aaa'}}>{en.signature.desc}</div></div>
+              <span style={{fontSize:20}}>{en.signature.icon}</span>
+              <div><div style={{fontFamily:FD,fontSize:11,color:'#fff'}}>{en.signature.name} <KW k={en.signature.keyword}/>{en.signature.charge&&<span style={{color:'#ffaa33',fontSize:10}}> ⏳</span>}</div>
+                <div style={{fontSize:11,color:'#aaa'}}>{en.signature.desc}</div></div>
             </div>
           </div>
           <div style={{display:'flex',gap:6,justifyContent:'center'}}>
@@ -1118,7 +1189,7 @@ export default function ComicSpire(){
     const queuedCardCount=battle.queuedPages.reduce((sum,p)=>sum+(p.cardCount||p.cards?.length||0),0);
     const totalPlacedCount=queuedCardCount+battle.placedCards.length;
     const totalPageCount=battle.queuedPages.length+(battle.placedCards.length>0?1:0);
-    const momT=hasR('momDown')?3:4;
+    const momT=hasR('momDown')?2:3;
     const canPlay=c=>{if(!isP)return false;if(c.keyword==='blood')return(player?.hp||0)>(hasR('bloodCheap')?3:c.bloodCost);
       if(c.keyword==='frenzy')return getValid(battle.page,c).size>0;
       if(battle.momentum>=momT&&!battle.momentumUsed)return true;return battle.energy>=c.cost;};
@@ -1127,29 +1198,28 @@ export default function ComicSpire(){
     const allPageCards=[...battle.placedCards,...battle.pendingCharges,...battle.activeCharges];
 
     return (
-      <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined}}>
-        <style>{CSS}</style><TooltipOverlay/>
-        {slatePreview.length>0&&<div style={{position:'fixed',inset:0,background:'#000d',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
-          {/* Outer page wrapper — single unified comic page */}
-          <div style={{position:'relative',borderRadius:10,overflow:'hidden',border:'4px solid #111',boxShadow:'0 0 60px #0008,0 0 0 1px #333',background:'#111'}}>
-            {/* 2x2 cell grid — gap acts as gutter strip */}
-            <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},145px)`,gridTemplateRows:`repeat(${ROWS},145px)`,gap:3,background:'#111'}}>
-            {slatePreview.map((cell,idx)=>{
-              const FLASH={attack:{c:'#ff2244',label:'ATTACK!'},magic:{c:'#aa33ff',label:'MAGIC!'},defend:{c:'#2266ff',label:'DEFEND!'},poison:{c:'#22cc44',label:'POISON!'},rage:{c:'#ff5500',label:'RAGE!'},heal:{c:'#22ccaa',label:'HEAL!'},draw:{c:'#11ccff',label:'DRAW!'}};
-              const cfg=FLASH[cell?.type]||FLASH.attack;
-              return <div key={idx} style={{position:'relative',overflow:'hidden',background:cell?cfg.c:'#0d0d0d',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6}}>
-                {cell&&<>
-                  <span style={{fontSize:48,lineHeight:1,filter:'drop-shadow(0 3px 10px #0009)'}}>{cell.icon||'⚡'}</span>
-                  <span style={{fontFamily:FD,fontSize:14,color:'#fff',letterSpacing:3,textShadow:'0 0 10px #000,0 2px 4px #000',fontWeight:700}}>{cfg.label}</span>
-                </>}
-                {!cell&&<span style={{fontFamily:FD,fontSize:18,color:'#1a1a1a'}}>—</span>}
-              </div>;
-            })}
+      <div style={{minHeight:'100vh',background:bg1,padding:10,fontFamily:FB,color:'#fff',display:'flex',flexDirection:'column',animation:shake?'shakeAnim 0.35s':undefined,zoom:0.9}}>
+        <style>{CSS}</style><TooltipOverlay/><AlignNotif/>
+        {slatePreview!==null&&(()=>{
+          const{cards,variant}=slatePreview;
+          const slateImg=`/assets/${variant}_Comic_Slate_4.png`;
+          const FLASH={attack:{c:'#ff2244',label:'ATTACK!'},magic:{c:'#aa33ff',label:'MAGIC!'},defend:{c:'#2266ff',label:'DEFEND!'},poison:{c:'#22cc44',label:'POISON!'},rage:{c:'#ff5500',label:'RAGE!'},heal:{c:'#22ccaa',label:'HEAL!'},draw:{c:'#11ccff',label:'DRAW!'}};
+          const panels=Array(4).fill(null).map((_,i)=>cards[i]||null);
+          return <div style={{position:'fixed',inset:0,background:'#000d',zIndex:180,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            <div style={{position:'relative',width:290,height:390}}>
+              <div style={{position:'absolute',top:'3%',left:'4%',width:'92%',height:'93%',display:'grid',gridTemplateColumns:'1fr 1fr',gridTemplateRows:'1fr 1fr',gap:'2%'}}>
+                {panels.map((card,i)=>{
+                  const cfg=card?(FLASH[card.type]||FLASH.attack):{c:'#111',label:''};
+                  return <div key={i} style={{background:cfg.c,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,overflow:'hidden'}}>
+                    {card&&<><span style={{fontSize:36,lineHeight:1,filter:'drop-shadow(0 2px 8px #0009)'}}>{card.icon||'⚡'}</span>
+                    <span style={{fontFamily:FD,fontSize:11,color:'#fff',letterSpacing:2,textShadow:'0 0 8px #000,0 2px 3px #000',fontWeight:700}}>{cfg.label}</span></>}
+                  </div>;
+                })}
+              </div>
+              <img src={slateImg} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',pointerEvents:'none'}}/>
             </div>
-            {/* Single PNG overlay spanning the full 2x2 page */}
-            <img src="/assets/Bubble_Comic_Slate_4.png" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'fill',mixBlendMode:'multiply',opacity:0.6,pointerEvents:'none'}}/>
-          </div>
-        </div>}
+          </div>;
+        })()}
         {floaters.map(f=> <div key={f.id} style={{position:'fixed',left:`${f.x}%`,top:`${f.y}%`,pointerEvents:'none',zIndex:100,fontFamily:FD,fontSize:18,color:f.color,textShadow:'2px 2px 0 #000',animation:'floatDmg 1.4s ease-out forwards'}}>{f.text}</div>)}
         {damageFlash&&<div style={{position:'fixed',inset:0,background:'#ff0000',pointerEvents:'none',zIndex:160,animation:'dmgFlash 0.5s ease-out forwards',boxShadow:'inset 0 0 80px #ff0000'}}/>}
         {/* Combatants */}
@@ -1157,16 +1227,17 @@ export default function ComicSpire(){
           <div style={{flex:1,minWidth:150,padding:'5px 8px',background:'#00000066',borderRadius:8,border:`1px solid ${accent}22`}}>
             <div style={{fontFamily:FD,fontSize:12,color:accent}}>⚡ Potential Man <span style={{fontSize:8,color:'#555'}}>Lv.{potLv}</span></div>
             <HpBar hp={player?.hp||0} max={player?.maxHp||1} color="#ff4455"/>
-            <div style={{display:'flex',gap:4,marginTop:3,fontSize:9,flexWrap:'wrap',alignItems:'center'}}>
-              <div style={{display:'flex',gap:1}}>{Array(battle.maxEnergy).fill(0).map((_,i)=> <div key={i} style={{width:12,height:12,borderRadius:'50%',background:i<battle.energy?'linear-gradient(135deg,#ffcc33,#ff8800)':'#222',border:`1px solid ${i<battle.energy?'#ffdd55':'#333'}`}}/>)}</div>
-              {(player?.def||0)>0&&<span style={{color:'#aaaaff',fontSize:8}}>🔰{player.def}</span>}
+            <div style={{display:'flex',gap:5,marginTop:4,fontSize:11,flexWrap:'wrap',alignItems:'center'}}>
+              <div style={{display:'flex',gap:2}}>{Array(battle.maxEnergy).fill(0).map((_,i)=> <div key={i} style={{width:13,height:13,borderRadius:'50%',background:i<battle.energy?'linear-gradient(135deg,#ffcc33,#ff8800)':'#222',border:`1px solid ${i<battle.energy?'#ffdd55':'#333'}`}}/>)}</div>
+              {(player?.def||0)>0&&<span style={{color:'#aaaaff',fontSize:11}}>🔰{player.def}</span>}
               {battle.playerBlock>0&&<span style={{color:'#4499ff'}}>🛡️{battle.playerBlock}</span>}
               {battle.momentum>0&&<span style={{color:'#33ddff'}}>⚡{battle.momentum}{battle.momentum>=momT&&!battle.momentumUsed?' FREE!':''}</span>}
               {battle.channelStacks>0&&<span style={{color:'#bb55ff'}}>✨{battle.channelStacks}</span>}
               {battle.comboCount>0&&<span style={{color:'#ff4455'}}>⚔×{battle.comboCount}</span>}
+              {(battle.playerPoison||0)>0&&<span style={{color:'#44dd66'}}>☠{battle.playerPoison}{(battle.playerCorrode||0)>0?'⊛':''}</span>}
             </div>
           </div>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}><div style={{fontFamily:FD,fontSize:16,color:'#ff336666'}}>VS</div><div style={{fontSize:7,color:'#444',fontFamily:FD}}>T{battle.turn}</div></div>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}><div style={{fontFamily:FD,fontSize:16,color:'#ff336666'}}>VS</div><div style={{fontSize:11,color:'#555',fontFamily:FD}}>T{battle.turn}</div></div>
           {en&&<div style={{flex:1,minWidth:150,padding:'5px 8px',background:'#00000066',borderRadius:8,border:`1px solid ${en.color}22`}}>
             <div style={{fontFamily:FD,fontSize:12,color:en.color}}>
               {en.effectiveClass==='boss'?'👑 ':en.effectiveClass==='elite'?'💀 ':'⚔️ '}{en.Name}
@@ -1183,11 +1254,11 @@ export default function ComicSpire(){
 
         {/* PLAYER + ENEMY PANELS (2x2 each) + LOG */}
         <div style={{display:'flex',gap:8,justifyContent:'center',alignItems:'flex-start',flexWrap:'wrap',marginBottom:4}}>
-        <div style={{background:'#f5f0e8',borderRadius:8,padding:6,width:280,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
+        <div style={{background:'#f5f0e8',borderRadius:8,padding:6,flex:1,maxWidth:280,minWidth:200,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
           <div style={{position:'absolute',inset:0,borderRadius:4,opacity:0.03,backgroundImage:'radial-gradient(circle,#000 0.5px,transparent 0.5px)',backgroundSize:'6px 6px',pointerEvents:'none'}}/>
-          <div style={{fontFamily:FD,fontSize:7,color:'#888',textAlign:'center',marginBottom:3,letterSpacing:2}}>
-            {totalPlacedCount>0?`${totalPlacedCount} cards across ${totalPageCount} page${totalPageCount===1?'':'s'} — END TURN to resolve ↘`:
-              battle.activeCharges.length>0?`⏳ ${battle.activeCharges.length} charge(s) ready — will fire on END TURN`:
+          <div style={{fontFamily:FD,fontSize:11,color:'#888',textAlign:'center',marginBottom:4,letterSpacing:1}}>
+            {totalPlacedCount>0?`${totalPlacedCount} cards · ${totalPageCount} page${totalPageCount===1?'':'s'} — END TURN ↘`:
+              battle.activeCharges.length>0?`⏳ ${battle.activeCharges.length} charge(s) ready`:
               '★ CREATE YOUR PANEL ★'}
           </div>
           <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},64px)`,gap:4}}>
@@ -1209,7 +1280,7 @@ export default function ComicSpire(){
                 animation:isCharging?'chargeGlow 2s ease-in-out infinite':undefined,
                 overflow:'hidden',
               }}>
-                <div style={{position:'absolute',top:1,left:3,fontSize:7,color:'#ccc',fontFamily:FD}}>{order}</div>
+                <div style={{position:'absolute',top:2,left:4,fontSize:10,color:'#ccc',fontFamily:FD}}>{order}</div>
                 {pl?(<div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'4px 6px',background:`${isCharging?'#ffaa33':tc}18`,border:`1px solid ${isCharging?'#ffaa33':tc}44`,borderRadius:5,lineHeight:1,maxWidth:'94%'}}>
                   <span style={{fontSize:18,filter:isCharging?'drop-shadow(0 0 4px #ffaa33)':undefined}}>{pl.icon}</span>
                   <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:1}}>
@@ -1222,9 +1293,9 @@ export default function ComicSpire(){
           </div>
         </div>
 
-        <div style={{background:'#101017',borderRadius:8,padding:6,width:280,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
-          <div style={{fontFamily:FD,fontSize:7,color:'#888',textAlign:'center',marginBottom:3,letterSpacing:2}}>
-            ENEMY PLAN · Panel {battle.enemyPlanIdx+1} acts this turn · {visibleEnemyPanels}/{battle.enemyPlan.length} revealed
+        <div style={{background:'#101017',borderRadius:8,padding:6,flex:1,maxWidth:280,minWidth:200,border:'3px solid #111',boxShadow:'3px 3px 0 #000',position:'relative'}}>
+          <div style={{fontFamily:FD,fontSize:11,color:'#888',textAlign:'center',marginBottom:4,letterSpacing:1}}>
+            ENEMY PLAN · Panel {battle.enemyPlanIdx+1} acts · {visibleEnemyPanels}/{battle.enemyPlan.length} revealed
           </div>
           <div style={{display:'grid',gridTemplateColumns:`repeat(${COLS},1fr)`,gridTemplateRows:`repeat(${ROWS},64px)`,gap:4}}>
             {battle.enemyPlan.map((intentCard,idx)=>{
@@ -1242,7 +1313,7 @@ export default function ComicSpire(){
                 backgroundColor:reveal?intentBg:'#090909',
                 overflow:'hidden',
               }}>
-                <div style={{position:'absolute',top:1,left:3,fontSize:7,color:isNow?'#ff5544':'#aaa',fontFamily:FD}}>{isNow?'▶':''}{ idx+1}</div>
+                <div style={{position:'absolute',top:2,left:4,fontSize:10,color:isNow?'#ff5544':'#aaa',fontFamily:FD}}>{isNow?'▶':''}{ idx+1}</div>
                 {reveal?<IntentBox intent={intentCard.intent} val={intentCard.intentVal} weak={en.weakened} compact card={intentCard}/>:<div style={{fontSize:11,color:'#666',fontFamily:FD}}>??</div>}
               </div>;
             })}
@@ -1251,8 +1322,14 @@ export default function ComicSpire(){
 
         </div>
 
+        {/* Intent legend */}
+        <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:4,padding:'2px 6px',background:'#00000033',borderRadius:4}}>
+          {[{i:'attack',ic:'⚔️',c:'#ff4455'},{i:'magic',ic:'✨',c:'#bb55ff'},{i:'channel',ic:'✨',c:'#aa44ee'},{i:'defend',ic:'🛡️',c:'#4499ff'},{i:'poison',ic:'☠️',c:'#44dd66'},{i:'corrode',ic:'☠️',c:'#22aa44'},{i:'heal',ic:'💚',c:'#55ddbb'},{i:'buff',ic:'💪',c:'#ffcc33'}].map(({i,ic,c})=>
+            <span key={i} style={{fontFamily:FD,fontSize:10,color:c,whiteSpace:'nowrap'}}>{ic} {i}</span>)}
+        </div>
+
         {showLog&&<div onClick={()=>setShowLog(false)} style={{position:'fixed',inset:0,background:'#000c',zIndex:190,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'#111',border:'2px solid #333',borderRadius:8,padding:'10px 14px',width:340,maxHeight:'75vh',overflowY:'auto',fontFamily:FB,fontSize:8,color:'#555',lineHeight:1.8}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#111',border:'2px solid #333',borderRadius:8,padding:'10px 14px',width:360,maxHeight:'75vh',overflowY:'auto',fontFamily:FB,fontSize:11,color:'#555',lineHeight:1.8}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
               <span style={{fontFamily:FD,fontSize:10,color:'#888',letterSpacing:2}}>FULL COMBAT LOG</span>
               <button onClick={()=>setShowLog(false)} style={{background:'none',border:'none',color:'#555',fontSize:14,cursor:'pointer',lineHeight:1}}>✕</button>
@@ -1261,26 +1338,26 @@ export default function ComicSpire(){
           </div>
         </div>}
         {/* Per-turn log strip */}
-        {battle.log.slice(battle.turnLogStart).length>0&&<div style={{marginBottom:3,padding:'3px 8px',background:'#00000044',borderRadius:4,fontSize:7,color:'#555',fontFamily:FB,lineHeight:1.7,display:'flex',flexWrap:'wrap',gap:'0 10px',alignItems:'center'}}>
-          <span style={{fontFamily:FD,fontSize:6,color:'#333',letterSpacing:1,marginRight:4}}>T{battle.turn}</span>
-          {battle.log.slice(battle.turnLogStart).map((m,i,arr)=><span key={i} style={{color:i===arr.length-1?'#aaa':'#555'}}>{m}</span>)}
+        {battle.log.slice(battle.turnLogStart).length>0&&<div style={{marginBottom:4,padding:'4px 10px',background:'#00000044',borderRadius:4,fontSize:11,color:'#555',fontFamily:FB,lineHeight:1.6,display:'flex',flexWrap:'wrap',gap:'0 10px',alignItems:'center',justifyContent:'center',textAlign:'center'}}>
+          <span style={{fontFamily:FD,fontSize:10,color:'#555',letterSpacing:1,marginRight:4}}>T{battle.turn}</span>
+          {battle.log.slice(battle.turnLogStart).map((m,i,arr)=><span key={i} style={{color:i===arr.length-1?'#ccc':'#555'}}>{m}</span>)}
         </div>}
         <div style={{marginBottom:4}}>
-          <div style={{fontFamily:FD,fontSize:7,color:'#444',textAlign:'center',marginBottom:2,letterSpacing:1}}>
-            {!isP?'⏳ Resolving...':selCard?`Panel use: ${panelSpanForCard(selCard)} ${selCard.charge?'(⏳ fires NEXT turn)':''} — click golden panel`:'SELECT A SUPERPOWER'}
+          <div style={{fontFamily:FD,fontSize:13,color:selCard?'#ffcc33':'#888',textAlign:'center',marginBottom:3,letterSpacing:1}}>
+            {!isP?'⏳ Resolving...':selCard?`${panelSpanForCard(selCard)} panel${panelSpanForCard(selCard)>1?'s':''} ${selCard.charge?'· ⏳ charges next turn':''} — click golden panel`:'SELECT A SUPERPOWER'}
           </div>
           <div style={{display:'flex',gap:4,justifyContent:'center',flexWrap:'wrap',minHeight:40}}>
-            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.2s ${i*0.04}s ease both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
+            {battle.hand.map((c,i)=> <div key={c.id} style={{animation:`enterCard 0.35s ${i*0.07}s cubic-bezier(0.22,1,0.36,1) both`,opacity:0}}><Card card={c} sel={c.id===selectedCardId} dis={!canPlay(c)} onClick={card=>setSelectedCardId(card.id===selectedCardId?null:card.id)} projDmg={calcProjectedDmg(c,battle,relics,en)}/></div>)}
           </div>
         </div>
         <div style={{display:'flex',justifyContent:'center',gap:10,alignItems:'center'}}>
-          <button onClick={()=>setShowLog(true)} style={{fontFamily:FD,fontSize:8,padding:'3px 10px',background:'#1a1a1a',border:'1px solid #333',borderRadius:4,color:'#555',cursor:'pointer',letterSpacing:1}}>📋 LOG</button>
+          <button onClick={()=>setShowLog(true)} style={{fontFamily:FD,fontSize:11,padding:'4px 12px',background:'#1a1a1a',border:'1px solid #333',borderRadius:4,color:'#666',cursor:'pointer',letterSpacing:1}}>📋 LOG</button>
           <button onClick={endTurn} disabled={!isP} style={{fontFamily:FD,fontSize:15,padding:'5px 28px',background:isP?(battle.placedCards.length+battle.activeCharges.length>0?'linear-gradient(135deg,#ff3366,#ff6600)':'#444'):'#222',border:`2px solid ${isP?'#fff':'#333'}`,borderRadius:7,color:isP?'#fff':'#555',cursor:isP?'pointer':'not-allowed'}}>
             {battle.activeCharges.length>0&&battle.placedCards.length===0?`FIRE ${battle.activeCharges.length} CHARGE(S)`:
               battle.placedCards.length>0?`RESOLVE ${battle.placedCards.length}${battle.activeCharges.length>0?'+'+battle.activeCharges.length+'⏳':''}`:
               'END TURN'}
           </button>
-          <div style={{fontSize:7,color:'#333'}}>📥{battle.drawPile.length} 📤{battle.discardPile.length} powers</div>
+          <div style={{fontSize:11,color:'#444'}}>📥{battle.drawPile.length} 📤{battle.discardPile.length}</div>
         </div>
       </div>);
   }
@@ -1318,11 +1395,11 @@ export default function ComicSpire(){
         </div>
 
         {/* Three-column swap layout */}
-        <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+        <div style={{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
 
           {/* Col 1: Enemy deck */}
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontFamily:FD,fontSize:8,color:'#555',letterSpacing:1,marginBottom:6}}>
+          <div style={{flex:1,minWidth:280}}>
+            <div style={{fontFamily:FD,fontSize:11,color:'#666',letterSpacing:1,marginBottom:8}}>
               {enName.toUpperCase()}'S DECK ({availableCards.length} · {absorbedCardIds.length} absorbed)
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
@@ -1339,8 +1416,8 @@ export default function ComicSpire(){
           </div>
 
           {/* Col 2: Action panel */}
-          <div style={{flexShrink:0,width:140}}>
-            <div style={{fontFamily:FD,fontSize:8,color:'#555',letterSpacing:1,marginBottom:6}}>ACTION</div>
+          <div style={{flexShrink:0,width:150}}>
+            <div style={{fontFamily:FD,fontSize:11,color:'#666',letterSpacing:1,marginBottom:8}}>ACTION</div>
             {selectedAbsorbCard
               ? <div style={{padding:'8px 10px',background:`${enColor}0d`,border:`1px solid ${enColor}33`,borderRadius:6}}>
                   <div style={{fontFamily:FD,fontSize:9,color:enColor,marginBottom:6}}>{selectedAbsorbCard.name}</div>
@@ -1360,8 +1437,8 @@ export default function ComicSpire(){
           </div>
 
           {/* Col 3: Your deck */}
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontFamily:FD,fontSize:8,color:'#555',letterSpacing:1,marginBottom:6}}>
+          <div style={{flex:1,minWidth:280}}>
+            <div style={{fontFamily:FD,fontSize:11,color:'#666',letterSpacing:1,marginBottom:8}}>
               YOUR DECK ({deck.length})
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
@@ -1379,7 +1456,10 @@ export default function ComicSpire(){
         <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>
           {rewardRelics.map((r,i)=> <div key={r.id} style={{animation:`fadeUp 0.3s ${i*0.1}s ease both`,opacity:0}}><Relic relic={r} onClick={rel=>pickRewardRelic(rel)}/></div>)}
         </div>
-        <button onClick={()=>pickRewardRelic(null)} style={{fontFamily:FD,fontSize:10,padding:'4px 14px',background:'#222',border:'1px solid #444',borderRadius:4,color:'#555',cursor:'pointer'}}>Skip →</button>
+        <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'center'}}>
+          <button onClick={()=>pickRewardRelic(null)} style={{fontFamily:FD,fontSize:11,padding:'5px 16px',background:'#222',border:'1px solid #444',borderRadius:5,color:'#666',cursor:'pointer'}}>Skip →</button>
+          <button onClick={()=>{setGold(p=>p+15);pickRewardRelic(null);}} style={{fontFamily:FD,fontSize:11,padding:'5px 16px',background:'#111',border:'1px solid #555',borderRadius:5,color:'#ffd700',cursor:'pointer'}}>Skip for 💰+15</button>
+        </div>
       </div>);
   }
 
@@ -1387,9 +1467,9 @@ export default function ComicSpire(){
     <div style={{minHeight:'100vh',background:bg1,padding:16,fontFamily:FB,color:'#fff'}}><style>{CSS}</style><TooltipOverlay/>
     <h2 style={{fontFamily:FD,fontSize:22,textAlign:'center',color:'#ffd700'}}>🛒 SHOP</h2>
     <div style={{textAlign:'center',fontFamily:FD,fontSize:14,color:'#ffd700',marginBottom:10}}>💰{gold}</div>
-    <div style={{fontFamily:FD,fontSize:10,color:'#666',textAlign:'center',marginBottom:4}}>SUPERPOWERS</div>
-    <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>{shopItems.map(i=> <Card key={i.id} card={i} onClick={()=>{if(gold>=i.price){setGold(p=>p-i.price);setDeck(p=>[...p,{...i,id:uid()}]);setShopItems(p=>p.filter(x=>x.id!==i.id));}}} price={i.price} dis={gold<i.price}/>)}</div>
-    <div style={{fontFamily:FD,fontSize:10,color:'#666',textAlign:'center',marginBottom:4}}>AMPS</div>
+    <div style={{fontFamily:FD,fontSize:12,color:'#777',textAlign:'center',marginBottom:6}}>SUPERPOWERS</div>
+    <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:12}}>{shopItems.map(i=> <Card key={i.id} card={i} onClick={()=>{if(gold>=i.price){setGold(p=>p-i.price);setDeck(p=>[...p,{...i,id:uid()}]);setShopItems(p=>p.filter(x=>x.id!==i.id));}}} price={i.price} dis={gold<i.price}/>)}</div>
+    <div style={{fontFamily:FD,fontSize:12,color:'#777',textAlign:'center',marginBottom:6}}>AMPS</div>
     <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginBottom:10}}>{shopRelics.map(r=> <Relic key={r.id} relic={r} onClick={()=>{if(gold>=r.price){setGold(p=>p-r.price);applyRelic(r);setShopRelics(p=>p.filter(x=>x.id!==r.id));}}} price={r.price} dis={gold<r.price}/>)}</div>
     <div style={{textAlign:'center'}}><button onClick={()=>setScreen('map')} style={{fontFamily:FD,fontSize:12,padding:'5px 18px',background:'#222',border:`1px solid ${accent}`,borderRadius:6,color:'#fff',cursor:'pointer'}}>LEAVE →</button></div>
   </div>);
@@ -1418,17 +1498,21 @@ export default function ComicSpire(){
   </div>);}
 
   if(screen==='gameOver')return (
-    <div style={{minHeight:'100vh',background:'radial-gradient(ellipse,#1a0000,#000)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
-    <h1 style={{fontSize:40,color:'#ff3333',textShadow:'4px 4px 0 #000'}}>POTENTIAL LOST</h1>
-    <p style={{fontFamily:FB,color:'#555',marginBottom:14}}>Floor {curFloor} · {copiedAbilities.length} superpowers · {relics.length} Amps</p>
-    <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'8px 24px',background:'linear-gradient(135deg,#ff3366,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer'}}>RETRY</button>
+    <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
+    <div style={{fontSize:48,marginBottom:8}}>💀</div>
+    <h1 style={{fontSize:40,color:'#ff3333',textShadow:'4px 4px 0 #000',margin:'0 0 8px'}}>POTENTIAL LOST</h1>
+    <p style={{fontFamily:FB,fontSize:14,color:'#777',marginBottom:6}}>Floor {curFloor} · {copiedAbilities.length} superpowers · {relics.length} Amps</p>
+    <p style={{fontFamily:FD,fontSize:13,color:alignColor,marginBottom:16}}>Fell as {alignLabel}</p>
+    <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'10px 28px',background:'linear-gradient(135deg,#ff3366,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#fff',cursor:'pointer'}}>RETRY</button>
   </div>);
 
   if(screen==='victory')return (
-    <div style={{minHeight:'100vh',background:'radial-gradient(ellipse,#0a1a0a,#000)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
-    <h1 style={{fontSize:40,color:'#ffd700',textShadow:'4px 4px 0 #ff6600,8px 8px 0 #000',animation:'pulse 2s ease-in-out infinite'}}>POTENTIAL REALIZED</h1>
-    <p style={{fontFamily:FB,color:'#aaa',marginBottom:14}}>{copiedAbilities.length} superpowers · {relics.length} Amps · Lv.{potLv}</p>
-    <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'8px 24px',background:'linear-gradient(135deg,#ffd700,#ff6600)',border:'2px solid #fff',borderRadius:8,color:'#000',cursor:'pointer'}}>AGAIN</button>
+    <div style={{minHeight:'100vh',background:`radial-gradient(ellipse at 50% 40%,${bg2},#000)`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:FD,color:'#fff',padding:16}}><style>{CSS}</style>
+    <div style={{fontSize:48,marginBottom:8,animation:'float 3s ease-in-out infinite'}}>🏆</div>
+    <h1 style={{fontSize:40,color:'#ffd700',textShadow:`4px 4px 0 ${accent},8px 8px 0 #000`,animation:'pulse 2s ease-in-out infinite',margin:'0 0 8px'}}>POTENTIAL REALIZED</h1>
+    <p style={{fontFamily:FB,fontSize:14,color:'#aaa',marginBottom:6}}>{copiedAbilities.length} superpowers · {relics.length} Amps · Lv.{potLv}</p>
+    <p style={{fontFamily:FD,fontSize:13,color:alignColor,marginBottom:16}}>Victory as {alignLabel}</p>
+    <button onClick={()=>setScreen('title')} style={{fontFamily:FD,fontSize:16,padding:'10px 28px',background:`linear-gradient(135deg,#ffd700,${accent})`,border:'2px solid #fff',borderRadius:8,color:'#000',cursor:'pointer'}}>AGAIN</button>
   </div>);
 
   return null;
