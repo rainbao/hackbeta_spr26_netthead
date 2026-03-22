@@ -603,6 +603,45 @@ function bReduce(state,action){
       }
       return s;}
 
+    case 'RESOLVE_NEXT_PAGE':{
+      if(s.phase!=='player')return s;
+      if(!s.queuedPages.length)return s;
+
+      const page=s.queuedPages[s.queuedPages.length-1];
+      if(!page?.cards?.length){
+        s.queuedPages=s.queuedPages.slice(0,-1);
+        return s;
+      }
+
+      const en={...s.enemy};
+      const {relics,playerHp,playerMaxHp}=action;
+      const pAttrs=action.playerAttrs||{};
+      let totalHeal=0;
+      const localHealFn=amt=>{totalHeal+=Math.max(0,amt);};
+
+      s.log=[...s.log,`⚡ Page flash resolves (${page.cardCount||page.cards.length} cards)`];
+      const sorted=[...page.cards].sort((a,b)=>(a.row*COLS+a.col)-(b.row*COLS+b.col));
+      let prev=null;
+      sorted.forEach(card=>{
+        if(en.gameHp<=0)return;
+        const msg=resolveCard(card,en,s,relics,playerHp,playerMaxHp,localHealFn,prev,pAttrs);
+        if(msg)s.log=[...s.log,msg];
+        prev=card;
+      });
+
+      if(totalHeal>0&&action.setPlayerHp){
+        action.setPlayerHp(Math.min(playerMaxHp,playerHp+totalHeal));
+      }
+
+      s.enemy=en;
+      s.queuedPages=s.queuedPages.slice(0,-1);
+      if(en.gameHp<=0){
+        s.victory=true;
+        s.phase='done';
+      }
+      return s;
+    }
+
     case 'END_TURN':{
       if(s.phase!=='player')return s;s.phase='resolving';
       const en={...s.enemy};const{relics,playerHp,playerMaxHp}=action;
@@ -1032,11 +1071,19 @@ export default function ComicSpire(){
         setSlatePreview({cards:cardData,variant:slateVariant});
         setTimeout(()=>setSlatePreview(null),900);
         doShake();
+        dispatch({
+          type:'RESOLVE_NEXT_PAGE',
+          relics,
+          playerHp:player?.hp||0,
+          playerMaxHp:player?.maxHp||1,
+          playerAttrs:player||{},
+          setPlayerHp:hp=>setPlayer(p=>p?{...p,hp}:p),
+        });
       }
     }
 
     prevQueuedPagesRef.current=battle.queuedPages.length;
-  },[battle.queuedPages,battle.phase,screen,audio,doShake]);
+  },[battle.queuedPages,battle.phase,screen,relics,player,audio,doShake]);
 
   const startGame=useCallback(()=>{
     audio.unlock();
